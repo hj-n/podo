@@ -23,3 +23,11 @@ Phase 6 실험 결과와 배포 limitation을 기록한다.
 - Public v0.5.2 can anonymously update to latest v0.5.3 and roll back to exact v0.5.2 while preserving selected user-owned file content and modes.
 - The public downloader accepts only API and asset URLs from the expected GitHub repository origins.
 - Across three separate real Codex tasks, a non-update request leaves v0.5.2 unchanged, an explicit request uses the canonical update command and reaches v0.5.3, and the next task starts normally without another update.
+
+## Known Limitations
+
+- Workspace format migration is intentionally not part of product update. An incompatible Release stops before writes and is Phase 7 work.
+- A handled update failure rolls back automatically, but a process killed between filesystem operations can leave a product journal that doctor reports and later updates refuse to bypass. Automated product-journal recovery is not claimed.
+- Historic v0.5.0 and v0.5.1 retain their immutable Python CA-store downloader behavior. Current installations should use latest v0.5.3; v0.5.2 and later use system `curl`.
+- Release verification currently relies on GitHub HTTPS, fixed repository origins, metadata identity and published SHA-256. Independent package signing is not implemented.
+- Transcript capture remains production-supported only for `codex-cli 0.144.0-alpha.4`.

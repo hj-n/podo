@@ -86,7 +86,7 @@ cd "$HOME/podo-home"
 특정 compatible version 설치나 migration 없는 rollback은 exact version을 사용한다.
 
 ```bash
-./.podo/bin/podo update --version 0.5.0
+./.podo/bin/podo update --version 0.5.2
 ```
 
 Interface Codex에 “Podo 업데이트해줘”라고 명시적으로 요청해도 같은 절차를 사용한다. 직접 수정된 제품 파일, unfinished transaction, checksum 문제나 Workspace 비호환이 있으면 update 전에 중단한다. 성공 후에는 새 Operating Policy를 정확히 읽도록 새 Codex 작업을 시작하고 hook 변경을 다시 검토한다.
