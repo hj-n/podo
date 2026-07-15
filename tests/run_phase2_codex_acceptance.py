@@ -174,7 +174,7 @@ def run_acceptance(workspace: Path, codex_home: Path) -> tuple[str, str]:
         env=env,
     )
     blob = evidence_blob(codex_home, result)
-    expected = f"NAME=합성포도;DECISION={DECISION_MARKER};VERSION=0.3.0"
+    expected = f"NAME=합성포도;DECISION={DECISION_MARKER};VERSION=0.4.0"
     assert_true(expected in blob, "Codex policy/State/CLI evidence missing\n" + result.stdout[-4000:] + result.stderr[-4000:])
     pending = list((workspace / ".podo-work/inbox").glob("*/capture.json"))
     assert_true(len(pending) == 1, f"expected one Stop hook capture, found {len(pending)}")

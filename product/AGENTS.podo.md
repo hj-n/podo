@@ -8,7 +8,7 @@
 
 1. `user_config.md`를 읽어 비서의 이름과 사용자가 명시한 대화 선호를 적용한다.
 2. `./.podo/bin/podo inbox --json`을 실행해 이전 turn의 pending capture가 있는지 확인한다.
-3. `recovery_required`가 있으면 일반 inbox 처리를 멈추고 `.podo/policies/recovery.md`를 읽어 doctor 진단부터 수행한다.
+3. `recovery_required`가 있으면 일반 inbox 처리를 멈춘다. 같은 inbox JSON의 `recovery_diagnosis`가 자동 실행된 read-only doctor 결과이며, `.podo/policies/recovery.md`를 읽어 이 evidence부터 설명한다.
 4. Pending 또는 deferred capture가 있으면 `.podo/policies/context_update.md`를 읽는다.
 5. Pending capture의 `review_entrypoint`만 읽고, 기존 deferred에 대한 명확한 후속 답이면 먼저 resolve한다.
 6. Deferred는 반복 질문 목록이 아니다. 현재 pending이 답을 담았거나 사용자가 해당 주제로 돌아왔을 때만 다룬다.

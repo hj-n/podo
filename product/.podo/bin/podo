@@ -79,8 +79,20 @@ def command_inbox(as_json: bool) -> int:
         recovery_required = TransactionManager(ROOT).unfinished()
     except TransactionError as error:
         raise ContextError(error.code, error.detail) from error
+    recovery_diagnosis = RecoveryStore(ROOT).doctor() if recovery_required else None
     if as_json:
-        print(json.dumps({"pending": values, "deferred": deferred, "recovery_required": recovery_required}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "pending": values,
+                    "deferred": deferred,
+                    "recovery_required": recovery_required,
+                    "recovery_diagnosis": recovery_diagnosis,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     elif not values and not deferred and not recovery_required:
         print("Inbox is empty.")
     else:
@@ -90,6 +102,8 @@ def command_inbox(as_json: bool) -> int:
             print(f"{value['capture_id']} | deferred | {value['summary']}")
         for value in recovery_required:
             print(f"{value} | recovery-required")
+        if recovery_diagnosis is not None:
+            print(f"doctor | {recovery_diagnosis['status']} | {recovery_diagnosis['finding_count']} findings")
     return 0
 
 

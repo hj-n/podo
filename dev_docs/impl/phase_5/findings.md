@@ -10,3 +10,5 @@ Phase 5 실험 결과를 confirmed evidence와 limitation으로 기록한다.
 - Recovery planning changes only its own plan artifact and pins all evidence, targets and cleanup sources.
 - Recovery apply requires an exact safe plan ID, rejects stale pins, is idempotent after success and refuses overlapping State conflicts.
 - The two-receipt deferred resolution boundary resumes from its journal without duplicating or skipping a receipt.
+- Task startup cannot skip diagnosis: when `recovery_required` is present, inbox includes the read-only doctor result as `recovery_diagnosis`.
+- Real Codex tasks preserved baseline State before approval, applied only the exact approved plan and restored the recovered State without permanent history reads.

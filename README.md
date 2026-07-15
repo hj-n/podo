@@ -12,7 +12,7 @@ Event → Delta → State
 
 ## Development Status
 
-Podo는 아직 개발 중이며 실제 사용자 설치용 release가 없다. 현재 저장소에는 local 개발 설치기, `Event → Delta → State` core loop와 deferred confirmation·TODO lifecycle 정책이 있다. 실제 개인 데이터나 중요한 transcript를 넣지 않는다.
+Podo는 아직 개발 중이며 실제 사용자 설치용 release가 없다. 현재 저장소에는 local 개발 설치기, `Event → Delta → State` core loop, deferred confirmation·TODO lifecycle과 중단된 Context transaction의 진단·승인 기반 복구가 있다. 실제 개인 데이터나 중요한 transcript를 넣지 않는다.
 
 ## Product and User Data
 
@@ -63,7 +63,12 @@ Installer는 제품 파일을 설치하고 사용자 소유 파일은 없을 때
 /absolute/path/to/podo-workspace/.podo/bin/podo validate
 /absolute/path/to/podo-workspace/.podo/bin/podo hook-status
 /absolute/path/to/podo-workspace/.podo/bin/podo inbox --json
+/absolute/path/to/podo-workspace/.podo/bin/podo doctor --json
+/absolute/path/to/podo-workspace/.podo/bin/podo recover --json
+/absolute/path/to/podo-workspace/.podo/bin/podo recover --apply <plan-id> --json
 ```
+
+`doctor`는 파일을 바꾸지 않고 unfinished transaction, Context link·hash, capture lifecycle, product manifest와 hook health를 진단한다. `recover`는 `.podo-work/recovery-plans/`에 영향 범위와 현재 hash가 고정된 계획만 만들며, Context는 사용자가 확인한 exact plan ID를 `--apply`로 전달할 때만 변경한다. 계획 이후 관련 파일이 달라졌거나 State 변경이 겹치면 적용하지 않는다.
 
 이 명령은 local development용이다. 아직 `curl` 기반 GitHub 설치나 update 명령은 제공하지 않는다.
 
@@ -112,6 +117,15 @@ python3 tests/run_phase4_codex_acceptance.py
 ```
 
 마지막 command는 Desktop의 marker-owned Workspace에서 실제 새 Codex 작업들을 이어 decision, defer, confirmation, TODO 위치·완료, credential 제외와 State-first 복원을 검증한 뒤 모두 정리한다.
+
+Phase 5 transaction, 동시성, 읽기 전용 진단과 승인 복구 검증:
+
+```bash
+python3 tests/run_phase5_suite.py
+python3 tests/run_phase5_codex_acceptance.py
+```
+
+첫 command는 임시 synthetic Workspace에서 모든 commit 경계, 비중첩/중첩 State 변경, doctor의 무변경 보장, stale plan 거부와 두 receipt 사이의 복구를 검증한다. 마지막 command는 Desktop의 marker-owned Workspace와 실제 새 Codex 작업으로 승인 전 무변경과 승인 후 복구를 검증한다.
 
 ## Repository Map
 

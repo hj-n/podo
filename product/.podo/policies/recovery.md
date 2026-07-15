@@ -2,7 +2,7 @@
 
 ## Detect Before Normal Inbox Work
 
-`podo inbox --json`의 `recovery_required`가 비어 있지 않으면 새 pending Context를 apply하지 않는다. 먼저 `podo doctor --json`으로 읽기 전용 진단을 실행하고, 현재 State가 안전한지와 어느 단계가 미완료인지 사용자에게 high-level로 설명한다.
+`podo inbox --json`의 `recovery_required`가 비어 있지 않으면 새 pending Context를 apply하지 않는다. 이때 같은 JSON의 `recovery_diagnosis`는 inbox가 자동 실행한 read-only doctor 결과다. 그 결과를 보기 전에는 진단을 추측해 답하지 않는다. 현재 State가 안전한지와 어느 단계가 미완료인지 사용자에게 high-level로 설명한다. 필요하면 `./.podo/bin/podo doctor --json`으로 같은 진단을 다시 실행할 수 있다.
 
 ## Doctor Is Read-only
 
