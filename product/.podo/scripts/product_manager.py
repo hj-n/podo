@@ -215,30 +215,37 @@ def safe_extract(archive: Path, destination: Path, version: str) -> Path:
     return package
 
 
-def update_workspace(root: Path, version: str | None) -> subprocess.CompletedProcess[str]:
+def prepare_release(version: str | None, directory: Path) -> tuple[dict[str, Any], dict[str, Any], Path, str]:
+    """Download, verify, and extract a Release into a caller-owned temporary directory."""
     if version is not None and not SEMVER_RE.fullmatch(version):
         fail("E_VERSION", "--version must be MAJOR.MINOR.PATCH")
     selected, assets = discover_release(version)
     selected_version = selected["version"]
     archive_name = f"podo-{selected_version}.tar.gz"
+    archive = directory / archive_name
+    checksum = directory / f"{archive_name}.sha256"
+    metadata_path = directory / "release.json"
+    download(required_asset(assets, archive_name), archive)
+    download(required_asset(assets, checksum.name), checksum, 4096)
+    download(required_asset(assets, "release.json"), metadata_path, 1024 * 1024)
+    metadata = load_json(metadata_path, "E_RELEASE_IDENTITY")
+    validate_metadata(metadata, selected_version, archive_name)
+    expected = checksum_value(checksum, archive_name)
+    actual = sha256(archive)
+    if expected != actual or metadata["archive_sha256"] != actual:
+        fail("E_CHECKSUM_MISMATCH", archive_name)
+    package = safe_extract(archive, directory / "extracted", selected_version)
+    internal = load_json(package / "release.json", "E_RELEASE_IDENTITY")
+    if internal != {key: value for key, value in metadata.items() if key != "archive_sha256"}:
+        fail("E_RELEASE_IDENTITY", "internal and external metadata differ")
+    return selected, metadata, package, actual
+
+
+def update_workspace(root: Path, version: str | None) -> subprocess.CompletedProcess[str]:
     with tempfile.TemporaryDirectory(prefix="podo-update-") as temporary:
         directory = Path(temporary)
-        archive = directory / archive_name
-        checksum = directory / f"{archive_name}.sha256"
-        metadata_path = directory / "release.json"
-        download(required_asset(assets, archive_name), archive)
-        download(required_asset(assets, checksum.name), checksum, 4096)
-        download(required_asset(assets, "release.json"), metadata_path, 1024 * 1024)
-        metadata = load_json(metadata_path, "E_RELEASE_IDENTITY")
-        validate_metadata(metadata, selected_version, archive_name)
-        expected = checksum_value(checksum, archive_name)
-        actual = sha256(archive)
-        if expected != actual or metadata["archive_sha256"] != actual:
-            fail("E_CHECKSUM_MISMATCH", archive_name)
-        package = safe_extract(archive, directory / "extracted", selected_version)
-        internal = load_json(package / "release.json", "E_RELEASE_IDENTITY")
-        if internal != {key: value for key, value in metadata.items() if key != "archive_sha256"}:
-            fail("E_RELEASE_IDENTITY", "internal and external metadata differ")
+        selected, _metadata, package, actual = prepare_release(version, directory)
+        selected_version = selected["version"]
         command = [
             sys.executable,
             str(package / "install.py"),
