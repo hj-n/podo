@@ -1,0 +1,25 @@
+{
+  "contract_version": 1,
+  "transaction_directory": ".podo-work/transactions/<transaction-id>/",
+  "required_files": [
+    "plan.json",
+    "journal.json"
+  ],
+  "journal_states": [
+    "prepared",
+    "committing",
+    "recovery-required",
+    "committed"
+  ],
+  "commit_order": [
+    "event",
+    "deltas",
+    "states",
+    "receipts",
+    "validation",
+    "cleanup"
+  ],
+  "unfinished_transactions_are_user_owned": true,
+  "unfinished_transactions_are_not_auto_deleted": true,
+  "state_hash_recheck_required_before_write": true
+}

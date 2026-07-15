@@ -17,6 +17,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from transaction_store import TransactionError, TransactionManager
+
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*(.+)$", re.MULTILINE)
@@ -117,6 +119,17 @@ class ContextStore:
 
     def receipt_path(self, capture_id: str) -> Path:
         return self.receipts / f"{capture_id}.json"
+
+    def ensure_receipt_is_final(self, receipt: dict[str, Any]) -> None:
+        transaction_id = receipt.get("transaction_id")
+        if not isinstance(transaction_id, str):
+            return
+        try:
+            directory = TransactionManager(self.root).transaction_dir(transaction_id)
+        except TransactionError as error:
+            fail(error.code, error.detail)
+        if directory.is_dir() and not directory.is_symlink():
+            fail("E_TRANSACTION_PENDING", transaction_id)
 
     def deferred_path(self, capture_id: str) -> Path:
         self.capture_dir(capture_id)
@@ -496,6 +509,7 @@ class ContextStore:
         existing_receipt = self.receipt_path(capture_id)
         if existing_receipt.exists():
             receipt = load_json(existing_receipt, "E_RECEIPT_INVALID")
+            self.ensure_receipt_is_final(receipt)
             return {"status": "already-processed", "receipt": receipt}
         if self.deferred_path(capture_id).exists():
             fail("E_CAPTURE_DEFERRED", "resolve a deferred capture with a later user turn")
@@ -528,101 +542,80 @@ class ContextStore:
             resolution_context = (deferred_id, decision, deferred, related_original)
         event_text = self.render_event(capture, original, event_request, resolution_context)
         plans = self.build_plans(request, capture, event_metadata_path, occurred)
-
-        stage = Path(tempfile.mkdtemp(prefix=".context-apply-", dir=self.work))
-        created_event = False
-        created_deltas: list[Path] = []
-        applied_states: list[UpdatePlan] = []
-        try:
-            staged_event = stage / "event"
-            (staged_event / "original").mkdir(parents=True)
-            shutil.copy2(original, staged_event / "original/session.jsonl")
-            if resolution_context is not None:
-                deferred_id, _, _, related_original = resolution_context
-                related_dir = staged_event / f"original/related/{deferred_id}"
-                related_dir.mkdir(parents=True)
-                shutil.copy2(related_original, related_dir / "session.jsonl")
-            (staged_event / "metadata.md").write_text(event_text, encoding="utf-8")
-            event_dir.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(staged_event, event_dir)
-            created_event = True
-
-            for index, plan in enumerate(plans):
-                plan.delta_path.parent.mkdir(parents=True, exist_ok=True)
-                staged_delta = stage / f"delta-{index}.md"
-                staged_delta.write_text(plan.delta_text, encoding="utf-8")
-                os.replace(staged_delta, plan.delta_path)
-                created_deltas.append(plan.delta_path)
-
-            for index, plan in enumerate(plans):
-                plan.state_path.parent.mkdir(parents=True, exist_ok=True)
-                staged_state = stage / f"state-{index}.md"
-                staged_state.write_text(plan.state_text, encoding="utf-8")
-                staged_state.chmod(plan.existing_mode)
-                os.replace(staged_state, plan.state_path)
-                applied_states.append(plan)
-
-            self.validate_workspace()
-        except Exception as error:
-            for plan in reversed(applied_states):
-                if plan.existing_state is None:
-                    try:
-                        plan.state_path.unlink()
-                    except OSError:
-                        pass
-                else:
-                    plan.state_path.write_bytes(plan.existing_state)
-                    plan.state_path.chmod(plan.existing_mode)
-            for path in reversed(created_deltas):
-                try:
-                    path.unlink()
-                except OSError:
-                    pass
-            if created_event:
-                shutil.rmtree(event_dir, ignore_errors=True)
-            if isinstance(error, ContextError):
-                raise
-            fail("E_CONTEXT_APPLY", str(error))
-        finally:
-            shutil.rmtree(stage, ignore_errors=True)
-
-        receipt_path = self.write_receipt(
-            capture,
-            "applied",
-            event=str(event_metadata_path.relative_to(self.root)),
-            deltas=[str(plan.delta_path.relative_to(self.root)) for plan in plans],
-            states=[str(plan.state_path.relative_to(self.root)) for plan in plans],
+        processed_at = datetime.now(timezone.utc).isoformat()
+        current_receipt = {
+            "receipt_version": 1,
+            "capture_id": capture["capture_id"],
+            "source": capture["source"],
+            "outcome": "applied",
+            "processed_at": processed_at,
+            "event": str(event_metadata_path.relative_to(self.root)),
+            "deltas": [str(plan.delta_path.relative_to(self.root)) for plan in plans],
+            "states": [str(plan.state_path.relative_to(self.root)) for plan in plans],
             **(
-                {
-                    "resolution_of": resolution_context[0],
-                    "resolution": resolution_context[1],
-                }
+                {"resolution_of": resolution_context[0], "resolution": resolution_context[1]}
                 if resolution_context is not None
                 else {}
             ),
-        )
+        }
+        receipts: list[tuple[Path, dict[str, Any]]] = [(self.receipt_path(capture_id), current_receipt)]
         if resolution_context is not None and deferred_capture is not None:
-            self.write_receipt(
-                deferred_capture,
-                resolution_context[1],
-                resolved_by_capture=capture_id,
-                event=str(event_metadata_path.relative_to(self.root)),
+            receipts.append(
+                (
+                    self.receipt_path(str(deferred_capture["capture_id"])),
+                    {
+                        "receipt_version": 1,
+                        "capture_id": deferred_capture["capture_id"],
+                        "source": deferred_capture["source"],
+                        "outcome": resolution_context[1],
+                        "processed_at": processed_at,
+                        "resolved_by_capture": capture_id,
+                        "event": str(event_metadata_path.relative_to(self.root)),
+                    },
+                )
             )
-        shutil.rmtree(capture_dir)
+        cleanup: list[tuple[str, Path]] = [("dir", capture_dir), ("file", request_resolved)]
         if deferred_capture_dir is not None:
-            shutil.rmtree(deferred_capture_dir)
+            cleanup.append(("dir", deferred_capture_dir))
         if deferred_path is not None:
-            deferred_path.unlink()
+            cleanup.append(("file", deferred_path))
+        transaction = TransactionManager(self.root)
         try:
-            request_resolved.unlink()
-        except OSError:
-            pass
+            transaction_id = transaction.prepare_context_apply(
+                capture_id=capture_id,
+                event_target=event_dir,
+                event_metadata=event_text,
+                primary_original=original,
+                related_originals=(
+                    [(resolution_context[0], resolution_context[3])]
+                    if resolution_context is not None
+                    else []
+                ),
+                updates=[
+                    {
+                        "state_slug": plan.state_slug,
+                        "delta_target": plan.delta_path,
+                        "delta_text": plan.delta_text,
+                        "state_target": plan.state_path,
+                        "state_text": plan.state_text,
+                        "existing_state": plan.existing_state,
+                        "mode": plan.existing_mode,
+                    }
+                    for plan in plans
+                ],
+                receipts=receipts,
+                cleanup=cleanup,
+            )
+            transaction_result = transaction.commit(transaction_id, self.validate_workspace)
+        except TransactionError as error:
+            fail(error.code, error.detail)
         return {
             "status": "applied",
             "event": str(event_metadata_path.relative_to(self.root)),
             "deltas": [str(plan.delta_path.relative_to(self.root)) for plan in plans],
             "states": [str(plan.state_path.relative_to(self.root)) for plan in plans],
-            "receipt": str(receipt_path.relative_to(self.root)),
+            "receipt": str(self.receipt_path(capture_id).relative_to(self.root)),
+            "transaction": transaction_result["transaction_id"],
             **({"resolved_deferred": resolution_context[0]} if resolution_context is not None else {}),
         }
 
@@ -663,7 +656,9 @@ class ContextStore:
             fail("E_RESOLUTION", "resolution identity or decision is invalid")
         deferred_receipt = self.receipt_path(deferred_id)
         if deferred_receipt.exists():
-            return {"status": "already-resolved", "receipt": load_json(deferred_receipt, "E_RECEIPT_INVALID")}
+            receipt = load_json(deferred_receipt, "E_RECEIPT_INVALID")
+            self.ensure_receipt_is_final(receipt)
+            return {"status": "already-resolved", "receipt": receipt}
         self.load_deferred(deferred_id)
         if decision == "confirmed" and request_path is None:
             fail("E_RESOLUTION_REQUEST", "confirmed resolution requires a Context apply request")
