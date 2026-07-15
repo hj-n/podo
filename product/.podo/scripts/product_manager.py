@@ -92,8 +92,11 @@ def github_release(version: str | None) -> tuple[dict[str, Any], dict[str, str]]
     if not SEMVER_RE.fullmatch(selected) or (version is not None and selected != version):
         fail("E_RELEASE_API", f"unexpected Release tag: {tag}")
     assets: dict[str, str] = {}
+    expected_asset_prefix = f"https://github.com/{REPOSITORY}/releases/download/{tag}/"
     for asset in value.get("assets", []):
         if isinstance(asset, dict) and isinstance(asset.get("name"), str) and isinstance(asset.get("browser_download_url"), str):
+            if not asset["browser_download_url"].startswith(expected_asset_prefix):
+                fail("E_RELEASE_ASSET", f"asset URL escapes selected Release: {asset['name']}")
             assets[asset["name"]] = asset["browser_download_url"]
     return {"version": selected, "tag": tag, "body": str(value.get("body") or "")}, assets
 
