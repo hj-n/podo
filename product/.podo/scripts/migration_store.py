@@ -43,7 +43,8 @@ REQUIRED_DESCRIPTOR = {
 }
 PRODUCT_ROOTS = ("AGENTS.md", ".codex", ".podo")
 USER_ROOTS = ("user_config.md", "events", "deltas", "state")
-PLAN_ID_RE = re.compile(r"^migration-[a-f0-9]{24}$")
+PLAN_ID_RE = re.compile(r"^(migration|rollback)-[a-f0-9]{24}$")
+BACKUP_ID_RE = re.compile(r"^migration-[a-f0-9]{24}-before-workspace-v[1-9]\d*$")
 
 
 class MigrationError(Exception):
@@ -290,7 +291,11 @@ def load_plan(root: Path, plan_id: str) -> dict[str, Any]:
     if not PLAN_ID_RE.fullmatch(plan_id):
         fail("E_MIGRATION_PLAN_ID", "exact migration plan ID is required")
     plan = load_json(root / f".podo-work/migration-plans/{plan_id}.json", "E_MIGRATION_PLAN")
-    if plan.get("migration_plan_version") != 1 or plan.get("kind") != "migration" or plan.get("plan_id") != plan_id:
+    if (
+        plan.get("migration_plan_version") != 1
+        or plan.get("kind") not in {"migration", "rollback"}
+        or plan.get("plan_id") != plan_id
+    ):
         fail("E_MIGRATION_PLAN", "plan identity is invalid")
     return plan
 
@@ -341,14 +346,6 @@ def remove_path(path: Path) -> None:
         path.unlink()
     elif path.exists():
         fail("E_MIGRATION_PATH_TYPE", str(path))
-
-
-def user_snapshot(root: Path) -> dict[str, dict[str, Any]]:
-    values: dict[str, dict[str, Any]] = {}
-    for relative in USER_ROOTS:
-        base = root / relative
-        values[relative] = path_evidence(base)
-    return values
 
 
 def flattened_snapshot(root: Path) -> dict[str, dict[str, str]]:
@@ -733,3 +730,237 @@ def apply_migration(root: Path, plan_id: str) -> dict[str, Any]:
         )
         verify_pins(root, plan)
         return apply_staged(root, stage, backup, plan, desired)
+
+
+def verify_source_backup(backup: Path, manifest: dict[str, Any]) -> None:
+    if manifest.get("migration_backup_version") != 1 or manifest.get("state") != "complete":
+        fail("E_MIGRATION_BACKUP", "backup is not complete")
+    product_manifest = backup / "product/.podo/install-manifest.json"
+    expected_manifest = manifest.get("current_product_manifest")
+    if not isinstance(expected_manifest, dict):
+        fail("E_MIGRATION_BACKUP", "previous product manifest evidence is missing")
+    if sha256(product_manifest) != hashlib.sha256(
+        (json.dumps(expected_manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    ).hexdigest():
+        fail("E_MIGRATION_BACKUP", "previous product manifest bytes changed")
+    if scan_product(backup / "product") != expected_manifest.get("product_files"):
+        fail("E_MIGRATION_BACKUP", "previous product files differ from backup manifest")
+    affected = manifest.get("affected_paths")
+    original = manifest.get("original_evidence")
+    if not isinstance(affected, list) or not isinstance(original, dict):
+        fail("E_MIGRATION_BACKUP", "previous user evidence is missing")
+    if evidence(backup / "user-data", affected) != original:
+        fail("E_MIGRATION_BACKUP", "previous user data differs from backup manifest")
+
+
+def plan_rollback(root: Path, backup_id: str) -> dict[str, Any]:
+    if not BACKUP_ID_RE.fullmatch(backup_id):
+        fail("E_ROLLBACK_BACKUP_ID", "exact migration backup ID is required")
+    backup = root / ".podo-backups" / backup_id
+    manifest = load_json(backup / "backup.json", "E_MIGRATION_BACKUP")
+    verify_source_backup(backup, manifest)
+    if manifest.get("migration_outcome") != "committed":
+        fail("E_ROLLBACK_BACKUP", "backup does not describe a committed migration")
+    try:
+        current, workspace_version = current_product(root)
+    except InstallError as error:
+        fail(error.code, error.detail)
+    if (
+        current.get("product_version") != manifest.get("to_product_version")
+        or workspace_version != manifest.get("to_workspace_version")
+        or sha256(root / ".podo/install-manifest.json") != manifest.get("after_product_manifest_sha256")
+    ):
+        fail("E_ROLLBACK_CURRENT_PRODUCT", "current product is not the committed migration target")
+    affected_paths = manifest["affected_paths"]
+    current_evidence = evidence(root, affected_paths)
+    after_evidence = manifest.get("after_evidence")
+    if not isinstance(after_evidence, dict):
+        fail("E_ROLLBACK_BACKUP", "post-migration evidence is missing")
+    changed_since_migration = sorted(
+        relative
+        for relative in affected_paths
+        if current_evidence.get(relative) != after_evidence.get(relative)
+    )
+    content = {
+        "migration_plan_version": 1,
+        "kind": "rollback",
+        "source_backup_id": backup_id,
+        "source_backup_manifest_sha256": sha256(backup / "backup.json"),
+        "from_product_version": current["product_version"],
+        "to_product_version": manifest["from_product_version"],
+        "from_workspace_version": workspace_version,
+        "to_workspace_version": manifest["from_workspace_version"],
+        "affected_paths": affected_paths,
+        "changes_since_migration": changed_since_migration,
+        "rollback": "Overwrites current affected paths and product with the retained pre-migration backup.",
+        "pins": {
+            "current_product_manifest_sha256": sha256(root / ".podo/install-manifest.json"),
+            "affected_evidence": current_evidence,
+            "workspace_version": workspace_version,
+        },
+    }
+    canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    plan_id = "rollback-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
+    safety_backup_id = f"migration-{hashlib.sha256(plan_id.encode()).hexdigest()[:24]}-before-workspace-v{content['to_workspace_version']}"
+    plan = {**content, "plan_id": plan_id, "backup_id": safety_backup_id}
+    path = root / f".podo-work/migration-plans/{plan_id}.json"
+    if path.exists():
+        if load_json(path, "E_ROLLBACK_PLAN") != plan:
+            fail("E_ROLLBACK_PLAN", "rollback plan ID collision")
+    else:
+        atomic_json(path, plan)
+    return plan
+
+
+def verify_rollback_pins(root: Path, plan: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    try:
+        current, workspace_version = current_product(root)
+    except InstallError as error:
+        fail(error.code, error.detail)
+    if (
+        current.get("product_version") != plan.get("from_product_version")
+        or workspace_version != plan.get("from_workspace_version")
+        or workspace_version != plan.get("pins", {}).get("workspace_version")
+        or sha256(root / ".podo/install-manifest.json") != plan.get("pins", {}).get("current_product_manifest_sha256")
+        or evidence(root, plan.get("affected_paths", [])) != plan.get("pins", {}).get("affected_evidence")
+    ):
+        fail("E_ROLLBACK_PLAN_STALE", "current product or affected user data changed after rollback planning")
+    source = root / ".podo-backups" / str(plan.get("source_backup_id"))
+    if sha256(source / "backup.json") != plan.get("source_backup_manifest_sha256"):
+        fail("E_ROLLBACK_PLAN_STALE", "source backup manifest changed after rollback planning")
+    return current, workspace_version
+
+
+def backup_plan_for_current(plan: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "plan_id": plan["plan_id"],
+        "backup_id": plan["backup_id"],
+        "from_product_version": plan["from_product_version"],
+        "to_product_version": plan["to_product_version"],
+        "from_workspace_version": plan["from_workspace_version"],
+        "to_workspace_version": plan["to_workspace_version"],
+        "affected_paths": plan["affected_paths"],
+        "pins": plan["pins"],
+    }
+
+
+def apply_rollback_paths(
+    root: Path,
+    source: Path,
+    safety: Path,
+    plan: dict[str, Any],
+    source_manifest: dict[str, Any],
+) -> dict[str, Any]:
+    transaction = root / ".podo-work/migrations" / plan["plan_id"]
+    if transaction.exists() or transaction.is_symlink():
+        fail("E_MIGRATION_RECOVERY_REQUIRED", plan["plan_id"])
+    transaction.mkdir(parents=True)
+    journal: dict[str, Any] = {
+        "migration_journal_version": 1,
+        "plan_id": plan["plan_id"],
+        "source_backup_id": plan["source_backup_id"],
+        "safety_backup_id": plan["backup_id"],
+        "state": "prepared",
+        "created_at": now(),
+        "updated_at": now(),
+    }
+    save_journal(transaction, journal)
+    try:
+        migration_inject("after-rollback-prepared")
+        journal["state"] = "applying"
+        save_journal(transaction, journal)
+        for relative in PRODUCT_ROOTS:
+            remove_path(root / relative)
+            copy_path(source / "product" / relative, root / relative)
+            migration_inject(f"after-rollback-product-{relative}")
+        for index, relative in enumerate(plan["affected_paths"], start=1):
+            destination = root / relative
+            if destination.exists() or destination.is_symlink():
+                remove_path(destination)
+            if source_manifest["original_evidence"][relative].get("kind") != "missing":
+                copy_path(source / "user-data" / relative, destination)
+            migration_inject(f"after-rollback-user-{index}")
+        remove_path(root / "WORKSPACE_VERSION")
+        copy_path(source / "user-data/WORKSPACE_VERSION", root / "WORKSPACE_VERSION")
+        migration_inject("after-rollback-workspace-version")
+        migration_inject("before-rollback-final-validation")
+        try:
+            validate_workspace(root, "context-present")
+        except InstallError as error:
+            fail(error.code, error.detail)
+        migration_inject("after-rollback-final-validation")
+        journal["state"] = "committed"
+        journal["committed_at"] = now()
+        save_journal(transaction, journal)
+        receipt = {
+            "migration_receipt_version": 1,
+            "plan_id": plan["plan_id"],
+            "source_backup_id": plan["source_backup_id"],
+            "safety_backup_id": plan["backup_id"],
+            "outcome": "rollback-committed",
+            "from_product_version": plan["from_product_version"],
+            "to_product_version": plan["to_product_version"],
+            "from_workspace_version": plan["from_workspace_version"],
+            "to_workspace_version": plan["to_workspace_version"],
+            "affected_paths": plan["affected_paths"],
+            "committed_at": journal["committed_at"],
+        }
+        atomic_json(root / f".podo-work/migration-receipts/{plan['plan_id']}.json", receipt)
+        shutil.rmtree(transaction)
+        return receipt
+    except Exception as error:
+        try:
+            journal["state"] = "rolling-back"
+            journal["failure"] = {
+                "code": getattr(error, "code", "E_ROLLBACK_APPLY"),
+                "detail": str(error),
+                "at": now(),
+            }
+            save_journal(transaction, journal)
+            restore_backup(root, safety, backup_plan_for_current(plan))
+            try:
+                validate_workspace(root, "context-present")
+            except InstallError as validation_error:
+                fail(validation_error.code, validation_error.detail)
+            journal["state"] = "rolled-back"
+            journal["rolled_back_at"] = now()
+            save_journal(transaction, journal)
+            receipt = {
+                "migration_receipt_version": 1,
+                "plan_id": plan["plan_id"],
+                "source_backup_id": plan["source_backup_id"],
+                "safety_backup_id": plan["backup_id"],
+                "outcome": "rollback-failed-restored",
+                "failure": journal["failure"],
+                "rolled_back_at": journal["rolled_back_at"],
+            }
+            atomic_json(root / f".podo-work/migration-receipts/{plan['plan_id']}-failure.json", receipt)
+            shutil.rmtree(transaction)
+        except Exception as rollback_error:
+            fail("E_ROLLBACK_RESTORE", f"{error}; safety restore failed: {rollback_error}")
+        if isinstance(error, MigrationError):
+            raise
+        fail("E_ROLLBACK_APPLY", str(error))
+
+
+def apply_rollback(root: Path, plan_id: str) -> dict[str, Any]:
+    plan = load_plan(root, plan_id)
+    if plan.get("kind") != "rollback":
+        fail("E_ROLLBACK_PLAN", "plan is not a rollback plan")
+    current, _workspace_version = verify_rollback_pins(root, plan)
+    source = root / ".podo-backups" / plan["source_backup_id"]
+    source_manifest = load_json(source / "backup.json", "E_MIGRATION_BACKUP")
+    verify_source_backup(source, source_manifest)
+    verify_rollback_pins(root, plan)
+    safety_plan = backup_plan_for_current(plan)
+    safety = create_backup(root, safety_plan, current)
+    migration_inject("after-rollback-backup")
+    verify_rollback_pins(root, plan)
+    return apply_rollback_paths(root, source, safety, plan, source_manifest)
+
+
+def apply_plan(root: Path, plan_id: str) -> dict[str, Any]:
+    plan = load_plan(root, plan_id)
+    if plan["kind"] == "migration":
+        return apply_migration(root, plan_id)
+    return apply_rollback(root, plan_id)

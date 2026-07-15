@@ -15,3 +15,6 @@ Phase 7 실험 결과와 migration limitation을 기록한다.
 - Running migration code on a full staged Workspace allows final target validation and declared-change comparison before current product or user files are replaced.
 - Persistent backup can be complete even when staged migration later fails; retaining it makes the failure recoverable without treating a retry as new approval.
 - Applying `WORKSPACE_VERSION` last gives final validation one clear product/data compatibility point, while handled failures still restore all roots from backup.
+- Strictly increasing descriptor versions make graph traversal finite; more than one reachable chain is rejected as ambiguous.
+- Full rollback may intentionally overwrite post-migration user changes, so the plan names changed affected paths and apply retains a separate rollback-start safety backup.
+- Neither the original migration backup nor the rollback safety backup is automatically deleted after success or handled failure.

@@ -21,6 +21,8 @@
 
 ## Status
 
-Apply boundaries passed on 2026-07-15. Full rollback boundaries remain pending.
+Apply and full rollback boundaries passed on 2026-07-15.
 
 `after-backup`, transaction preparation, each of the three product roots, affected user path, `WORKSPACE_VERSION`, before/after final validation failures all preserved the exact previous product and selected user file hash/mode. Complete backups remained and handled transaction directories were cleaned.
+
+The equivalent separately approved full rollback boundaries preserved the exact rollback-start product and user snapshot using the retained safety backup.
