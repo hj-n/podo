@@ -11,8 +11,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -53,25 +51,29 @@ def load_json(path: Path, code: str) -> dict[str, Any]:
     return value
 
 
-def request_headers(*, asset: bool = False) -> dict[str, str]:
-    headers = {
-        "Accept": "application/octet-stream" if asset else "application/vnd.github+json",
-        "User-Agent": "podo-product-manager/1",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    token = os.environ.get("PODO_GITHUB_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    return headers
-
-
 def read_url(url: str, limit: int) -> bytes:
-    request = urllib.request.Request(url, headers=request_headers())
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            raw = response.read(limit + 1)
-    except (urllib.error.URLError, TimeoutError) as error:
-        fail("E_RELEASE_DOWNLOAD", str(error))
+    result = subprocess.run(
+        [
+            "curl",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--max-time",
+            "30",
+            "--header",
+            "Accept: application/vnd.github+json",
+            "--header",
+            "X-GitHub-Api-Version: 2022-11-28",
+            url,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode:
+        fail("E_RELEASE_DOWNLOAD", result.stderr.decode("utf-8", errors="replace").strip())
+    raw = result.stdout
     if len(raw) > limit:
         fail("E_RELEASE_DOWNLOAD", "response exceeds size limit")
     return raw
@@ -120,22 +122,32 @@ def discover_release(version: str | None) -> tuple[dict[str, Any], dict[str, str
 
 
 def download(url: str, target: Path, limit: int = MAX_DOWNLOAD) -> None:
-    request = urllib.request.Request(url, headers=request_headers())
+    result = subprocess.run(
+        [
+            "curl",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--max-time",
+            "60",
+            "--output",
+            str(target),
+            url,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode:
+        fail("E_RELEASE_DOWNLOAD", result.stderr.decode("utf-8", errors="replace").strip())
     try:
-        with urllib.request.urlopen(request, timeout=60) as response, target.open("wb") as output:
-            total = 0
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > limit:
-                    fail("E_RELEASE_DOWNLOAD", "asset exceeds size limit")
-                output.write(chunk)
-    except ProductManagerError:
-        raise
-    except (OSError, urllib.error.URLError, TimeoutError) as error:
+        size = target.stat().st_size
+    except OSError as error:
         fail("E_RELEASE_DOWNLOAD", str(error))
+    if size > limit:
+        target.unlink(missing_ok=True)
+        fail("E_RELEASE_DOWNLOAD", "asset exceeds size limit")
 
 
 def required_asset(assets: dict[str, str], name: str) -> str:

@@ -6,7 +6,7 @@
 
 ## Status
 
-First Release passed; second-version update/rollback remains pending.
+v0.5.0 and v0.5.1 published; corrected v0.5.2 update/rollback remains pending.
 
 ## v0.5.0 Evidence
 
@@ -18,4 +18,6 @@ First Release passed; second-version update/rollback remains pending.
 
 ## Remaining
 
-Publish v0.5.1, then use public assets for v0.5.0 install → latest v0.5.1 update → exact v0.5.0 rollback.
+The first public `podo update` attempt from v0.5.0 stopped before product writes because the macOS framework Python CA store could not verify GitHub. Existing product and user data remained intact and the marker-owned container was removed.
+
+v0.5.2 changes the Release/API transport to the documented system `curl` prerequisite. Publish it, then use public assets for v0.5.1 install → latest v0.5.2 update → exact v0.5.1 rollback.

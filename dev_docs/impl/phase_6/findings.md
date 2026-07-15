@@ -18,3 +18,5 @@ Phase 6 실험 결과와 배포 limitation을 기록한다.
 - Product 0.5.0 is the first Release candidate containing the complete Phase 6 package/install/update path for Workspace 1.
 - Public v0.5.0 assets are anonymously downloadable and byte-identical to the tagged local candidate.
 - Interrupted product update journals now appear separately in doctor and task-startup recovery diagnosis.
+- Python framework CA configuration is not reliable enough for the public downloader on the target macOS environment; using the already-required system `curl` avoids that environment-specific trust-store mismatch.
+- The failed public download occurred before staging/replacement and demonstrated the existing product preservation boundary.
