@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import fcntl
 from pathlib import Path
 
 
@@ -63,6 +64,18 @@ def main() -> None:
         plan = json_output(cli(workspace, releases, "migrate", "--version", "1.0.0", "--json"))
         if plan["kind"] != "migration" or version(workspace) != ("0.9.0", "1"):
             raise AssertionError(str(plan))
+        lock_path = workspace / ".podo-work/migration-apply.lock"
+        lock_descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
+            busy = cli(workspace, releases, "migrate", "--apply", plan["plan_id"], "--json")
+        finally:
+            fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+            os.close(lock_descriptor)
+        if busy.returncode == 0 or "E_MIGRATION_BUSY" not in busy.stderr:
+            raise AssertionError(busy.stdout + busy.stderr)
+        if version(workspace) != ("0.9.0", "1") or list((workspace / ".podo-backups").glob("*")):
+            raise AssertionError("busy apply changed Workspace or created backup")
         migrated = json_output(cli(workspace, releases, "migrate", "--apply", plan["plan_id"], "--json"))
         if migrated["outcome"] != "committed" or version(workspace) != ("1.0.0", "2"):
             raise AssertionError(str(migrated))
@@ -74,7 +87,7 @@ def main() -> None:
         restored = json_output(cli(workspace, releases, "migrate", "--apply", rollback["plan_id"], "--json"))
         if restored["outcome"] != "rollback-committed" or version(workspace) != ("0.9.0", "1"):
             raise AssertionError(str(restored))
-        print("PASS canonical CLI requires separate exact migration and full rollback plans")
+        print("PASS canonical CLI serializes apply and requires separate exact migration/full rollback plans")
 
         diagnosed = workspace_fixture(base, "diagnosis", old_package, old_metadata)
         transaction = diagnosed / f".podo-work/migrations/migration-{'a' * 24}"
