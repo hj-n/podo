@@ -20,3 +20,6 @@ Phase 6 실험 결과와 배포 limitation을 기록한다.
 - Interrupted product update journals now appear separately in doctor and task-startup recovery diagnosis.
 - Python framework CA configuration is not reliable enough for the public downloader on the target macOS environment; using the already-required system `curl` avoids that environment-specific trust-store mismatch.
 - The failed public download occurred before staging/replacement and demonstrated the existing product preservation boundary.
+- Public v0.5.2 can anonymously update to latest v0.5.3 and roll back to exact v0.5.2 while preserving selected user-owned file content and modes.
+- The public downloader accepts only API and asset URLs from the expected GitHub repository origins.
+- Across three separate real Codex tasks, a non-update request leaves v0.5.2 unchanged, an explicit request uses the canonical update command and reaches v0.5.3, and the next task starts normally without another update.
