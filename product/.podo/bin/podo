@@ -142,7 +142,7 @@ def main() -> None:
     resolve.add_argument("--request", type=Path)
     discard = context_commands.add_parser("discard")
     discard.add_argument("--capture", required=True)
-    discard.add_argument("--reason", required=True, choices=("no-delta",))
+    discard.add_argument("--reason", required=True, choices=("no-delta", "sensitive-data"))
     args = parser.parse_args()
 
     try:

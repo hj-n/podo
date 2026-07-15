@@ -303,6 +303,55 @@ def main() -> None:
             raise AssertionError("partial defer changed permanent Context")
         print("PASS partial capture cannot become a deferred decision")
 
+        inference_session, inference_turn = "inference-session-007", "inference-turn-007"
+        inference_id = capture(
+            workspace,
+            transcript(root, inference_session, inference_turn),
+            inference_session,
+            inference_turn,
+        )
+        inferred = state_request(workspace, "사용자가 아침 회의를 선호한다고 추론했다.")
+        inferred["updates"][0]["confidence"] = "inferred"
+        inference_request = request_file(workspace, "inferred", inferred)
+        failed = cli(
+            workspace,
+            "context",
+            "apply",
+            "--capture",
+            inference_id,
+            "--request",
+            str(inference_request),
+        )
+        if failed.returncode == 0 or "E_REQUEST_CONFIDENCE" not in failed.stderr:
+            raise AssertionError(failed.stdout + failed.stderr)
+        if permanent_snapshot(workspace) != before:
+            raise AssertionError("inferred apply changed permanent Context")
+        print("PASS inference cannot be applied as confirmed user State")
+
+        sensitive_session, sensitive_turn = "sensitive-session-008", "sensitive-turn-008"
+        sensitive_id = capture(
+            workspace,
+            transcript(root, sensitive_session, sensitive_turn),
+            sensitive_session,
+            sensitive_turn,
+        )
+        excluded = cli(
+            workspace,
+            "context",
+            "discard",
+            "--capture",
+            sensitive_id,
+            "--reason",
+            "sensitive-data",
+        )
+        if excluded.returncode or json.loads(excluded.stdout).get("outcome") != "sensitive-data-excluded":
+            raise AssertionError(excluded.stdout + excluded.stderr)
+        if permanent_snapshot(workspace) != before:
+            raise AssertionError("sensitive exclusion changed permanent Context")
+        if (workspace / f".podo-work/inbox/{sensitive_id}").exists():
+            raise AssertionError("sensitive temporary original was not removed")
+        print("PASS sensitive credential capture is excluded from permanent Context")
+
 
 if __name__ == "__main__":
     main()

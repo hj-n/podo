@@ -20,7 +20,7 @@ DELTA_PATH_RE = re.compile(r"^deltas/(\d{4})/(\d{2})/\d{4}-\d{2}-\d{2}_\d{6}-[a-
 FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*(.+)$", re.MULTILINE)
 LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 TODO_RE = re.compile(r"^- \[([ xX])\]\s+(.+)$")
-TODO_FIELD_RE = re.compile(r"^\s+- (Created|Due|Completed|Result):\s*(.+)$")
+TODO_FIELD_RE = re.compile(r"^\s+- (Created|Due|Completed|Cancelled|Reopened|Result):\s*(.+)$")
 TOKEN_RE = re.compile(r"\{\{[A-Z][A-Z0-9_]*\}\}")
 
 
@@ -171,7 +171,7 @@ class Validator:
             text = path.read_text(encoding="utf-8")
         except OSError:
             return
-        for label in ("Assistant name", "Personality"):
+        for label in ("Assistant name", "Personality", "Response style"):
             match = re.search(rf"^- {re.escape(label)}:\s*(.+)$", text, re.MULTILINE)
             if not match or not match.group(1).strip() or TOKEN_RE.search(match.group(1)):
                 self.add("E_USER_CONFIG", path, f"{label} must contain an explicit value")
@@ -290,14 +290,34 @@ class Validator:
                         todo_fields[field.group(1)] = field.group(2).strip()
                 if "Created" not in todo_fields:
                     self.add("E_TODO_CREATED", path, f"TODO on line {index + 1} has no Created date")
-                for name in ("Created", "Due", "Completed"):
+                parsed_dates: dict[str, date] = {}
+                for name in ("Created", "Due", "Completed", "Cancelled", "Reopened"):
                     if name in todo_fields:
                         try:
-                            date.fromisoformat(todo_fields[name])
+                            parsed_dates[name] = date.fromisoformat(todo_fields[name])
                         except ValueError:
                             self.add("E_TODO_DATE", path, f"{name} on line {index + 1} must be YYYY-MM-DD")
-                if checked and "Completed" not in todo_fields:
-                    self.add("E_TODO_COMPLETED", path, f"checked TODO on line {index + 1} has no Completed date")
+                terminal = {name for name in ("Completed", "Cancelled") if name in todo_fields}
+                if checked and len(terminal) != 1:
+                    self.add(
+                        "E_TODO_TERMINAL",
+                        path,
+                        f"checked TODO on line {index + 1} requires exactly one of Completed or Cancelled",
+                    )
+                if not checked and terminal and "Reopened" not in todo_fields:
+                    self.add(
+                        "E_TODO_REOPENED",
+                        path,
+                        f"open TODO on line {index + 1} with a terminal date requires Reopened",
+                    )
+                created = parsed_dates.get("Created")
+                for name in ("Completed", "Cancelled", "Reopened"):
+                    if created is not None and parsed_dates.get(name, created) < created:
+                        self.add("E_TODO_ORDER", path, f"{name} on line {index + 1} precedes Created")
+                prior_terminal = parsed_dates.get("Completed") or parsed_dates.get("Cancelled")
+                reopened = parsed_dates.get("Reopened")
+                if prior_terminal is not None and reopened is not None and reopened < prior_terminal:
+                    self.add("E_TODO_ORDER", path, f"Reopened on line {index + 1} precedes its terminal date")
             for link_value in LINK_RE.findall(text):
                 self.safe_target(path, link_value, "E_STATE_LINK")
         if self.mode == "synthetic-fixture" and not found:

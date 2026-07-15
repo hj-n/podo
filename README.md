@@ -12,7 +12,7 @@ Event → Delta → State
 
 ## Development Status
 
-Podo는 아직 개발 중이며 실제 사용자 설치용 release가 없다. 현재 저장소에는 local 개발 설치기와 `Event → Delta → State` core loop가 있다. 실제 개인 데이터나 중요한 transcript를 넣지 않는다.
+Podo는 아직 개발 중이며 실제 사용자 설치용 release가 없다. 현재 저장소에는 local 개발 설치기, `Event → Delta → State` core loop와 deferred confirmation·TODO lifecycle 정책이 있다. 실제 개인 데이터나 중요한 transcript를 넣지 않는다.
 
 ## Product and User Data
 
@@ -41,7 +41,8 @@ Podo는 Codex turn이 끝날 때 `Stop` hook으로 session ID, turn ID와 local 
 
 - 미래 Context에 영향을 주는 명확한 변화면 immutable Event, Delta와 State로 적용한다.
 - 변화가 없으면 Event를 만들지 않고 `no-delta` receipt만 남긴다.
-- 불확실하거나 기존 결정과 충돌하면 State를 유지하고 사용자에게 확인한다.
+- 불확실하거나 기존 결정과 충돌하면 State를 유지하고 한 번만 defer해 확인한다.
+- 후속 확인이나 기각은 원래 보류된 원본과 연결한다.
 
 지원하지 않는 runtime, session·turn identity mismatch, 손상된 원본이나 partial capture는 Delta와 State를 갱신하지 않는다.
 
@@ -101,6 +102,13 @@ python3 tests/run_phase3_codex_continuity.py
 ```
 
 마지막 command는 Desktop에 marker-owned Workspace와 isolated `CODEX_HOME`을 만들고 네 개의 실제 Codex 작업으로 capture, apply, No Delta와 State-first restore를 검증한 뒤 모두 정리한다.
+
+Phase 4 판단 lifecycle과 TODO 검증:
+
+```bash
+python3 tests/run_phase4_decisions.py
+python3 tests/run_phase4_todo.py
+```
 
 ## Repository Map
 

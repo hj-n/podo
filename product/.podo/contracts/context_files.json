@@ -52,7 +52,8 @@
     "checkbox_pattern": "- [ ] or - [x]",
     "created_required": true,
     "due_optional": true,
-    "completed_required_when_checked": true,
+    "terminal_date_when_checked": "exactly one of Completed or Cancelled",
+    "reopened_required_when_open_with_terminal_history": true,
     "result_optional": true
   }
 }

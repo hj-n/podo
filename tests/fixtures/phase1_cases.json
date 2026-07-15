@@ -21,7 +21,7 @@
   },
   {
     "name": "checked-todo-missing-completed",
-    "expected_code": "E_TODO_COMPLETED"
+    "expected_code": "E_TODO_TERMINAL"
   },
   {
     "name": "unresolved-template-token",

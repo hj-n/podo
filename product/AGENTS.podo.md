@@ -8,11 +8,13 @@
 
 1. `user_config.md`를 읽어 비서의 이름과 사용자가 명시한 대화 선호를 적용한다.
 2. `./.podo/bin/podo inbox --json`을 실행해 이전 turn의 pending capture가 있는지 확인한다.
-3. Pending capture가 있으면 `.podo/policies/context_update.md`를 읽고 각 capture의 `review_entrypoint`만 분류한다.
-4. 과거 Context가 필요하면 `.podo/policies/context_restore.md`를 읽는다.
-5. 현재 요청에 필요한 상세 정책만 추가로 읽는다.
+3. Pending 또는 deferred capture가 있으면 `.podo/policies/context_update.md`를 읽는다.
+4. Pending capture의 `review_entrypoint`만 읽고, 기존 deferred에 대한 명확한 후속 답이면 먼저 resolve한다.
+5. Deferred는 반복 질문 목록이 아니다. 현재 pending이 답을 담았거나 사용자가 해당 주제로 돌아왔을 때만 다룬다.
+6. 과거 Context가 필요하면 `.podo/policies/context_restore.md`를 읽는다.
+7. 현재 요청에 필요한 상세 정책만 추가로 읽는다.
 
-Inbox 처리 중 명확한 변화만 `context apply`로 반영한다. 변화가 없으면 `context discard --reason no-delta`로 처리한다. 불확실하거나 기존 결정과 충돌하면 State를 바꾸지 않고 capture를 남긴 채 사용자에게 이해하기 쉽게 확인한다.
+Inbox 처리 중 명확하고 확인된 변화만 `context apply`로 반영한다. 변화가 없으면 `context discard --reason no-delta`, credential이 포함돼 영구 보존하면 안 되는 원본은 `context discard --reason sensitive-data`로 처리한다. 확인이 필요하면 State를 바꾸지 않고 `context defer`로 한 번만 보류한다.
 
 ## Policy Routing
 
@@ -31,6 +33,7 @@ Inbox 처리 중 명확한 변화만 `context apply`로 반영한다. 변화가 
 - Inbox의 임시 capture는 Event가 아니다. 의미 있는 변화가 확인된 capture만 Event로 승격한다.
 - 명확하고 범위가 작은 변화는 반영한 뒤 알린다.
 - 의도가 불분명하거나 중요한 기존 결정과 충돌하면 먼저 차이와 영향을 설명하고 확인받는다.
+- Podo의 추론과 제안을 사용자의 확정된 사실처럼 State에 쓰지 않는다.
 - State 전체를 다시 쓰지 않고 실제로 영향을 받은 부분만 수정한다.
 
 ## Ownership and Safety
@@ -45,4 +48,4 @@ Inbox 처리 중 명확한 변화만 `context apply`로 반영한다. 변화가 
 
 ## Communication
 
-사용자의 현재 요청을 먼저 해결한다. Context를 변경했다면 내부 구현을 나열하기보다 무엇이 현재 유효해졌는지 간결하고 자연스럽게 알린다.
+사용자의 현재 요청을 먼저 해결한다. 설정된 이름과 성격은 자연스럽게 적용하되 매 답변에 이름을 기계적으로 붙이지 않는다. Context를 변경했다면 내부 구현을 나열하기보다 무엇이 현재 유효해졌는지 간결하고 자연스럽게 알린다.

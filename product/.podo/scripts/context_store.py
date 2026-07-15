@@ -21,7 +21,7 @@ from typing import Any
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*(.+)$", re.MULTILINE)
 TODO_RE = re.compile(r"^- \[([ xX])\]\s+(.+)$")
-TODO_FIELD_RE = re.compile(r"^\s+- (Created|Due|Completed|Result):\s*(.+)$")
+TODO_FIELD_RE = re.compile(r"^\s+- (Created|Due|Completed|Cancelled|Reopened|Result):\s*(.+)$")
 TOKEN_RE = re.compile(r"\{\{[A-Z][A-Z0-9_]*\}\}")
 CONFIDENCE_VALUES = {"confirmed", "inferred", "needs-confirmation"}
 
@@ -310,14 +310,32 @@ class ContextStore:
                     todo_fields[field.group(1)] = field.group(2).strip()
             if "Created" not in todo_fields:
                 fail("E_REQUEST_INVALID_DATE", f"{state_slug} TODO line {index + 1} requires Created")
-            for name in ("Created", "Due", "Completed"):
+            parsed_dates: dict[str, date] = {}
+            for name in ("Created", "Due", "Completed", "Cancelled", "Reopened"):
                 if name in todo_fields:
                     try:
-                        date.fromisoformat(todo_fields[name])
+                        parsed_dates[name] = date.fromisoformat(todo_fields[name])
                     except ValueError:
                         fail("E_REQUEST_INVALID_DATE", f"{state_slug} {name} must be YYYY-MM-DD")
-            if checked and "Completed" not in todo_fields:
-                fail("E_REQUEST_INVALID_DATE", f"{state_slug} checked TODO requires Completed")
+            terminal = {name for name in ("Completed", "Cancelled") if name in todo_fields}
+            if checked and len(terminal) != 1:
+                fail(
+                    "E_REQUEST_TODO_LIFECYCLE",
+                    f"{state_slug} checked TODO requires exactly one of Completed or Cancelled",
+                )
+            if not checked and terminal and "Reopened" not in todo_fields:
+                fail(
+                    "E_REQUEST_TODO_LIFECYCLE",
+                    f"{state_slug} open TODO with a terminal date requires Reopened",
+                )
+            created = parsed_dates.get("Created")
+            for name in ("Completed", "Cancelled", "Reopened"):
+                if created is not None and parsed_dates.get(name, created) < created:
+                    fail("E_REQUEST_TODO_LIFECYCLE", f"{state_slug} {name} cannot precede Created")
+            prior_terminal = parsed_dates.get("Completed") or parsed_dates.get("Cancelled")
+            reopened = parsed_dates.get("Reopened")
+            if prior_terminal is not None and reopened is not None and reopened < prior_terminal:
+                fail("E_REQUEST_TODO_LIFECYCLE", f"{state_slug} Reopened cannot precede its terminal date")
 
     def build_plans(
         self,
@@ -341,6 +359,11 @@ class ContextStore:
             confidence = str(update.get("confidence") or "")
             if confidence not in CONFIDENCE_VALUES:
                 fail("E_REQUEST_FIELD", f"invalid confidence for {state_slug}")
+            if confidence != "confirmed":
+                fail(
+                    "E_REQUEST_CONFIDENCE",
+                    f"{state_slug} cannot apply inference or unconfirmed content to current State",
+                )
             state_text = str(update.get("state_markdown") or "")
             self.validate_state_text(state_text, state_slug)
             state_path = self.root / f"state/{state_slug}.md"
@@ -604,8 +627,8 @@ class ContextStore:
         }
 
     def discard(self, capture_id: str, reason: str) -> dict[str, Any]:
-        if reason != "no-delta":
-            fail("E_DISCARD_REASON", "Phase 3 supports only no-delta")
+        if reason not in {"no-delta", "sensitive-data"}:
+            fail("E_DISCARD_REASON", "unsupported discard reason")
         existing_receipt = self.receipt_path(capture_id)
         if existing_receipt.exists():
             return {"status": "already-processed", "receipt": load_json(existing_receipt, "E_RECEIPT_INVALID")}
@@ -617,14 +640,15 @@ class ContextStore:
             fail("E_DISCARD_COLLISION", trash.name)
         os.replace(capture_dir, trash)
         try:
-            receipt_path = self.write_receipt(capture, "no-delta", reason=reason)
+            outcome = "no-delta" if reason == "no-delta" else "sensitive-data-excluded"
+            receipt_path = self.write_receipt(capture, outcome, reason=reason)
         except Exception:
             os.replace(trash, capture_dir)
             raise
         shutil.rmtree(trash)
         return {
             "status": "discarded",
-            "outcome": "no-delta",
+            "outcome": outcome,
             "receipt": str(receipt_path.relative_to(self.root)),
         }
 
