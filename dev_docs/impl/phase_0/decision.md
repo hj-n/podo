@@ -14,7 +14,7 @@ Instruction routing, user configuration, local command execution, Event idempote
 
 Before Phase 1 implementation proceeds:
 
-1. Discuss and approve whether `.codex/hooks.json` becomes a product-owned file, then update Architecture accordingly.
+1. **Resolved 2026-07-15:** `.codex/hooks.json` is approved as a product-owned file and Architecture has been updated.
 2. Define a transcript adapter interface keyed by exact Codex runtime version.
 3. Unknown schemas, missing required record families and identity mismatches must fail closed or be labeled `partial`; they must never update State as if capture succeeded.
 4. Use App Server `thread/read` as a supported partial fallback and source cross-check, not as full-original capture on the evidence currently available.
@@ -23,4 +23,4 @@ Before Phase 1 implementation proceeds:
 
 ## Next Phase
 
-Phase 0 is complete. Phase 1 may begin after condition 1 is resolved in Architecture. Conditions 2–6 become explicit Phase 1 contracts and acceptance tests rather than hidden implementation assumptions.
+Phase 0 is complete and the Architecture condition is resolved. Phase 1 may begin. Conditions 2–6 become explicit Phase 1 contracts and acceptance tests rather than hidden implementation assumptions.

@@ -18,7 +18,7 @@ Phase 0 used only synthetic data in a disposable Workspace outside this reposito
 
 1. Official Codex documentation explicitly says the transcript file pointed to by hooks is not a stable interface. The tested parser is valid only for `codex-cli 0.144.0-alpha.4` until another version passes compatibility tests.
 2. Project hooks require a trusted `.codex/` config layer and separate trust of the exact hook definition. The experiment used an explicit automation-only hook trust bypass after isolating the Workspace.
-3. The current Architecture defines only `AGENTS.md` and `.podo/` as product-owned. It does not yet authorize installation of `.codex/hooks.json`.
+3. At the initial gate, Architecture defined only `AGENTS.md` and `.podo/` as product-owned and did not authorize `.codex/hooks.json`. This was the explicit decision required before Phase 1 and is resolved below.
 4. The repeatable tests used the CLI binary bundled with Codex desktop. The actual Desktop Local Project hook review UI and end-to-end acceptance still need a manual surface test before installation is considered usable.
 5. A forced compaction of the short synthetic thread did not finish within 75 seconds. Interruption was safe, but post-compaction capture was not demonstrated.
 6. Attachments were absent from the synthetic transcript. Raw bytes would be preserved when represented in the transcript, but attachment completeness needs a fixture in the production adapter tests.
@@ -29,6 +29,8 @@ Phase 0 used only synthetic data in a disposable Workspace outside this reposito
 Automatic and correctly identified capture cannot be implemented by `AGENTS.md` plus `.podo/` alone in the tested Desktop-oriented design. The minimal evidence-backed addition is a project-local `.codex/hooks.json` that invokes a product-owned script under `.podo/`.
 
 This changes the product ownership boundary and installation/trust flow. It must be discussed and added to `initial_architecture.md` before Phase 1 treats it as product structure.
+
+Resolution on 2026-07-15: the user approved `.codex/hooks.json` as a product-owned file. Architecture now includes its install, update, trust and health-check boundaries.
 
 The Event identity should be session+turn, not session alone. A session grows on resume; each meaningful captured turn is an immutable snapshot. Capture failure must block Delta and State, while a captured Event followed by downstream failure remains inspectable and recoverable.
 

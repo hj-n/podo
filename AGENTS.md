@@ -78,13 +78,14 @@ dev_docs/impl/phase_<n>/
 - 실제 사용자 State, Event, Delta, transcript, config와 backup을 이 저장소에 복사하지 않는다.
 - 테스트에는 synthetic fixture와 disposable temporary workspace만 사용한다.
 - 제품용 runtime policy 원본은 `product/AGENTS.podo.md`다.
+- 제품용 hook 원본은 `product/.codex/hooks.json`이다.
 - `product/AGENTS.md`를 만들지 않는다.
 - `AGENTS.podo.md`는 설치 과정에서만 temporary 또는 실제 User Workspace의 `AGENTS.md`로 변환한다.
 - 테스트용 실제 `AGENTS.md`를 이 저장소 안에 지속적으로 두지 않는다.
 
 ## Architecture Invariants
 
-- 설치된 제품 소유 영역은 User Workspace의 `AGENTS.md`와 `.podo/`다.
+- 설치된 제품 소유 영역은 User Workspace의 `AGENTS.md`, `.codex/hooks.json`과 `.podo/`다.
 - 사용자 소유 영역은 `WORKSPACE_VERSION`, `.podo-work/`, `.podo-backups/`, `user_config.md`, `events/`, `deltas/`와 `state/`다.
 - 일반 product update는 사용자 소유 파일을 덮어쓰지 않는다.
 - 사용자 데이터 변경은 합의된 Context update 또는 migration 흐름을 따른다.
