@@ -21,3 +21,6 @@ Phase 7 실험 결과와 migration limitation을 기록한다.
 - Normal product update remains fail-closed for incompatible Workspace versions and cannot create or apply migration approval artifacts.
 - Context, product-update and migration recovery requirements need separate startup fields because their safe recovery procedures differ.
 - A filesystem lock serializes migration/full-rollback apply in the supported macOS/Linux environment without treating a leftover lock file as an unfinished transaction.
+- Across six real Codex tasks, natural-language requests preserved all four approval boundaries: update-only, migration review/apply, and full rollback review/apply.
+- Response wording is not sufficient acceptance evidence; command traces, installed versions, plan/backup timing and State hashes independently confirmed behavior.
+- A new task after product/data replacement reads the installed policy and current State without repeating migration or rollback.
