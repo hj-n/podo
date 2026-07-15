@@ -70,14 +70,18 @@ def command_hook_status() -> int:
 
 
 def command_inbox(as_json: bool) -> int:
-    values = ContextStore(ROOT).list_inbox()
+    store = ContextStore(ROOT)
+    values = store.list_inbox()
+    deferred = store.list_deferred()
     if as_json:
-        print(json.dumps({"pending": values}, ensure_ascii=False, indent=2))
-    elif not values:
+        print(json.dumps({"pending": values, "deferred": deferred}, ensure_ascii=False, indent=2))
+    elif not values and not deferred:
         print("Inbox is empty.")
     else:
         for value in values:
             print(f"{value['capture_id']} | {value['completeness']} | {value['user_preview']}")
+        for value in deferred:
+            print(f"{value['capture_id']} | deferred | {value['summary']}")
     return 0
 
 
@@ -89,6 +93,12 @@ def command_context_apply(capture_id: str, request: Path) -> int:
 
 def command_context_discard(capture_id: str, reason: str) -> int:
     result = ContextStore(ROOT).discard(capture_id, reason)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def command_context_defer(capture_id: str, request: Path) -> int:
+    result = ContextStore(ROOT).defer_capture(capture_id, request)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -111,6 +121,9 @@ def main() -> None:
     apply = context_commands.add_parser("apply")
     apply.add_argument("--capture", required=True)
     apply.add_argument("--request", required=True, type=Path)
+    defer = context_commands.add_parser("defer")
+    defer.add_argument("--capture", required=True)
+    defer.add_argument("--request", required=True, type=Path)
     discard = context_commands.add_parser("discard")
     discard.add_argument("--capture", required=True)
     discard.add_argument("--reason", required=True, choices=("no-delta",))
@@ -127,6 +140,8 @@ def main() -> None:
             code = command_inbox(args.json)
         elif args.context_command == "apply":
             code = command_context_apply(args.capture, args.request)
+        elif args.context_command == "defer":
+            code = command_context_defer(args.capture, args.request)
         else:
             code = command_context_discard(args.capture, args.reason)
     except ContextError as error:

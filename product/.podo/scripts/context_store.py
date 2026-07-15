@@ -100,6 +100,7 @@ class ContextStore:
         self.root = root.resolve()
         self.work = self.root / ".podo-work"
         self.inbox = self.work / "inbox"
+        self.deferred = self.work / "deferred"
         self.receipts = self.work / "receipts"
         self.validator = self.root / ".podo/scripts/validate_workspace.py"
 
@@ -116,6 +117,10 @@ class ContextStore:
 
     def receipt_path(self, capture_id: str) -> Path:
         return self.receipts / f"{capture_id}.json"
+
+    def deferred_path(self, capture_id: str) -> Path:
+        self.capture_dir(capture_id)
+        return self.deferred / f"{capture_id}.json"
 
     def capture_dir(self, capture_id: str) -> Path:
         if not re.fullmatch(r"[A-Za-z0-9-]+--[A-Za-z0-9-]+", capture_id):
@@ -148,7 +153,7 @@ class ContextStore:
         values: list[dict[str, Any]] = []
         for directory in sorted(path for path in self.inbox.iterdir() if path.is_dir() and not path.name.startswith(".")):
             capture_id = directory.name
-            if self.receipt_path(capture_id).exists():
+            if self.receipt_path(capture_id).exists() or self.deferred_path(capture_id).exists():
                 continue
             _, metadata, _ = self.load_capture(capture_id)
             values.append(
@@ -164,6 +169,25 @@ class ContextStore:
                     "original_entrypoint": str((directory / metadata["original_entrypoint"]).relative_to(self.root)),
                 }
             )
+        return values
+
+    def list_deferred(self) -> list[dict[str, Any]]:
+        if not self.deferred.exists():
+            return []
+        if self.deferred.is_symlink() or not self.deferred.is_dir():
+            fail("E_DEFERRED_INVALID", ".podo-work/deferred must be a directory")
+        values: list[dict[str, Any]] = []
+        for path in sorted(self.deferred.glob("*.json")):
+            if path.is_symlink() or not path.is_file():
+                fail("E_DEFERRED_INVALID", path.name)
+            value = load_json(path, "E_DEFERRED_INVALID")
+            capture_id = str(value.get("capture_id") or "")
+            if path != self.deferred_path(capture_id):
+                fail("E_DEFERRED_INVALID", f"deferred identity mismatch: {path.name}")
+            if self.receipt_path(capture_id).exists():
+                continue
+            self.load_capture(capture_id)
+            values.append(value)
         return values
 
     def validate_request_path(self, path: Path) -> Path:
@@ -367,6 +391,47 @@ class ContextStore:
         path = self.receipt_path(str(capture["capture_id"]))
         atomic_json(path, receipt)
         return path
+
+    def defer_capture(self, capture_id: str, request_path: Path) -> dict[str, Any]:
+        existing_receipt = self.receipt_path(capture_id)
+        if existing_receipt.exists():
+            return {"status": "already-processed", "receipt": load_json(existing_receipt, "E_RECEIPT_INVALID")}
+        deferred_path = self.deferred_path(capture_id)
+        if deferred_path.exists():
+            return {"status": "already-deferred", "deferred": load_json(deferred_path, "E_DEFERRED_INVALID")}
+        _, capture, _ = self.load_capture(capture_id)
+        if capture.get("completeness") != "complete-local-transcript":
+            fail("E_CAPTURE_PARTIAL", ",".join(capture.get("missing_record_families") or []))
+        request_resolved = self.validate_request_path(request_path)
+        request = load_json(request_resolved, "E_REQUEST_JSON")
+        state_candidates = request.get("state_candidates", [])
+        if not isinstance(state_candidates, list) or any(
+            not isinstance(value, str) or not SLUG_RE.fullmatch(value) for value in state_candidates
+        ):
+            fail("E_REQUEST_STATE", "state_candidates must contain State slugs")
+        if len(state_candidates) != len(set(state_candidates)):
+            fail("E_REQUEST_STATE", "state_candidates must not contain duplicates")
+        value = {
+            "deferred_version": 1,
+            "capture_id": capture_id,
+            "source": capture["source"],
+            "occurred": capture["occurred"],
+            "deferred_at": datetime.now(timezone.utc).isoformat(),
+            "summary": one_line(request.get("summary"), "summary"),
+            "why_confirmation": one_line(request.get("why_confirmation"), "why_confirmation"),
+            "question": one_line(request.get("question"), "question"),
+            "state_candidates": state_candidates,
+        }
+        atomic_json(deferred_path, value)
+        try:
+            request_resolved.unlink()
+        except OSError:
+            pass
+        return {
+            "status": "deferred",
+            "capture_id": capture_id,
+            "deferred": str(deferred_path.relative_to(self.root)),
+        }
 
     def apply(self, capture_id: str, request_path: Path) -> dict[str, Any]:
         existing_receipt = self.receipt_path(capture_id)

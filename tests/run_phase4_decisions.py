@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Exercise Phase 4 decision lifecycle in disposable synthetic Workspaces."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BUILD = REPO_ROOT / "tools/build_synthetic_workspace.py"
+FIXTURE = REPO_ROOT / "tests/fixtures/codex_transcript_0.144.0-alpha.4.jsonl"
+
+
+def run(args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, **kwargs)
+
+
+def transcript(root: Path, session: str, turn: str, *, partial: bool = False) -> Path:
+    text = FIXTURE.read_text(encoding="utf-8")
+    text = text.replace("synthetic-session-001", session).replace("synthetic-turn-001", turn)
+    if partial:
+        text = "\n".join(line for line in text.splitlines() if '"role":"assistant"' not in line) + "\n"
+    path = root / f"{session}--{turn}.jsonl"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def capture(workspace: Path, source: Path, session: str, turn: str) -> str:
+    payload = {
+        "hook_event_name": "Stop",
+        "session_id": session,
+        "turn_id": turn,
+        "transcript_path": str(source),
+        "cwd": str(workspace),
+        "model": "synthetic-model",
+    }
+    result = run([str(workspace / ".podo/scripts/capture_event")], input=json.dumps(payload), cwd=workspace)
+    if result.returncode:
+        raise AssertionError(result.stdout + result.stderr)
+    return f"{session}--{turn}"
+
+
+def request_file(workspace: Path, name: str, value: dict) -> Path:
+    path = workspace / f".podo-work/requests/{name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def cli(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return run([str(workspace / ".podo/bin/podo"), *args], cwd=workspace)
+
+
+def permanent_snapshot(workspace: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for root_name in ("events", "deltas", "state"):
+        for path in sorted((workspace / root_name).rglob("*")):
+            if path.is_file():
+                result[path.relative_to(workspace).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
+
+
+def defer_request(candidates: list[str] | None = None) -> dict:
+    return {
+        "summary": "회의 시간을 오전 9시에서 10시로 옮길 가능성을 사용자가 언급했다.",
+        "why_confirmation": "기존 결정과 충돌하지만 변경 의도가 확정되지 않았다.",
+        "question": "회의 시간을 오전 10시로 확정할까요?",
+        "state_candidates": candidates or ["synthetic-planning"],
+    }
+
+
+def main() -> None:
+    with tempfile.TemporaryDirectory(prefix="podo-phase4-decisions-") as temporary:
+        root = Path(temporary)
+        workspace = root / "workspace"
+        built = run([sys.executable, str(BUILD), "--output", str(workspace)])
+        if built.returncode:
+            raise AssertionError(built.stdout + built.stderr)
+
+        before = permanent_snapshot(workspace)
+        session, turn = "defer-session-001", "defer-turn-001"
+        capture_id = capture(workspace, transcript(root, session, turn), session, turn)
+        request = request_file(workspace, "defer", defer_request())
+        result = cli(workspace, "context", "defer", "--capture", capture_id, "--request", str(request))
+        if result.returncode or json.loads(result.stdout).get("status") != "deferred":
+            raise AssertionError(result.stdout + result.stderr)
+        if permanent_snapshot(workspace) != before:
+            raise AssertionError("defer changed permanent Context")
+        listing = cli(workspace, "inbox", "--json")
+        value = json.loads(listing.stdout)
+        if value["pending"] or [item["capture_id"] for item in value["deferred"]] != [capture_id]:
+            raise AssertionError(listing.stdout)
+        repeated = cli(workspace, "context", "defer", "--capture", capture_id, "--request", str(request))
+        if repeated.returncode or json.loads(repeated.stdout).get("status") != "already-deferred":
+            raise AssertionError(repeated.stdout + repeated.stderr)
+        print("PASS uncertain conflict defers once without permanent Context change")
+
+        session, turn = "invalid-session-002", "invalid-turn-002"
+        invalid_id = capture(workspace, transcript(root, session, turn), session, turn)
+        invalid = defer_request(["Not A State"])
+        invalid_request = request_file(workspace, "invalid", invalid)
+        failed = cli(workspace, "context", "defer", "--capture", invalid_id, "--request", str(invalid_request))
+        if failed.returncode == 0 or "E_REQUEST_STATE" not in failed.stderr:
+            raise AssertionError(failed.stdout + failed.stderr)
+        listing = json.loads(cli(workspace, "inbox", "--json").stdout)
+        if invalid_id not in [item["capture_id"] for item in listing["pending"]]:
+            raise AssertionError("invalid defer did not preserve pending capture")
+        if permanent_snapshot(workspace) != before:
+            raise AssertionError("invalid defer changed permanent Context")
+        print("PASS invalid defer request preserves pending capture")
+
+        session, turn = "partial-session-003", "partial-turn-003"
+        partial_id = capture(workspace, transcript(root, session, turn, partial=True), session, turn)
+        partial_request = request_file(workspace, "partial", defer_request())
+        failed = cli(workspace, "context", "defer", "--capture", partial_id, "--request", str(partial_request))
+        if failed.returncode == 0 or "E_CAPTURE_PARTIAL" not in failed.stderr:
+            raise AssertionError(failed.stdout + failed.stderr)
+        if permanent_snapshot(workspace) != before:
+            raise AssertionError("partial defer changed permanent Context")
+        print("PASS partial capture cannot become a deferred decision")
+
+
+if __name__ == "__main__":
+    main()
