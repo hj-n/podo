@@ -1,0 +1,20 @@
+{
+  "contract_version": 1,
+  "transaction_directory": ".podo-work/product-updates/<update-id>/",
+  "receipt_directory": ".podo-work/product-update-receipts/",
+  "product_roots": [
+    "AGENTS.md",
+    ".codex",
+    ".podo"
+  ],
+  "user_owned_paths_are_not_update_targets": true,
+  "current_manifest_verification_required": true,
+  "workspace_compatibility_required": true,
+  "replacement_order": [
+    "AGENTS.md",
+    ".codex",
+    ".podo"
+  ],
+  "rollback_restores_all_product_roots": true,
+  "unfinished_context_transaction_blocks_update": true
+}

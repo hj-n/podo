@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,28 @@ def write_text(path: Path, content: str, mode: int = 0o644) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     path.chmod(mode)
+
+
+def atomic_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def load_json(path: Path, code: str) -> dict[str, Any]:
@@ -159,7 +182,13 @@ def validate_workspace(root: Path, mode: str) -> None:
         fail("E_VALIDATION", " ".join(result.stdout.strip().splitlines()) or "Workspace validation failed")
 
 
-def build_stage(package_root: Path, stage: Path, source: dict[str, Any], release: dict[str, Any]) -> dict[str, Any]:
+def build_stage(
+    package_root: Path,
+    stage: Path,
+    source: dict[str, Any],
+    release: dict[str, Any],
+    workspace_version: int | None = None,
+) -> dict[str, Any]:
     product = package_root / "product"
     shutil.copy2(product / "AGENTS.podo.md", stage / "AGENTS.md")
     shutil.copytree(product / ".codex", stage / ".codex", ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
@@ -172,9 +201,11 @@ def build_stage(package_root: Path, stage: Path, source: dict[str, Any], release
         (stage / directory).mkdir()
     shutil.copy2(product / ".podo/templates/workspace/WORKSPACE_VERSION", stage / "WORKSPACE_VERSION")
     write_text(stage / "user_config.md", render_user_config(product / ".podo/templates/workspace/user_config.md"))
-    workspace_version = int((stage / "WORKSPACE_VERSION").read_text(encoding="utf-8").strip())
+    initial_workspace_version = int((stage / "WORKSPACE_VERSION").read_text(encoding="utf-8").strip())
+    workspace_version = initial_workspace_version if workspace_version is None else workspace_version
     if workspace_version not in release["workspace_versions"]:
-        fail("E_WORKSPACE_INCOMPATIBLE", f"release does not support initial Workspace {workspace_version}")
+        fail("E_WORKSPACE_INCOMPATIBLE", f"release does not support Workspace {workspace_version}")
+    write_text(stage / "WORKSPACE_VERSION", f"{workspace_version}\n")
     manifest = {
         "manifest_version": 2,
         "product_version": release["product_version"],
@@ -275,6 +306,192 @@ def apply_fresh(stage: Path, target: Path, already_installed: bool) -> str:
     return "installed"
 
 
+def current_product(target: Path) -> tuple[dict[str, Any], int]:
+    present = [relative for relative in PRODUCT_ROOTS if (target / relative).exists()]
+    if set(present) != set(PRODUCT_ROOTS):
+        fail("E_PARTIAL_PRODUCT", "update requires a complete installed product")
+    manifest = load_json(target / MANIFEST_PATH, "E_PARTIAL_PRODUCT")
+    for field in ("manifest_version", "product_version", "workspace_version", "product_files"):
+        if field not in manifest:
+            fail("E_PARTIAL_PRODUCT", f"manifest field is missing: {field}")
+    if manifest["manifest_version"] not in {1, 2}:
+        fail("E_PARTIAL_PRODUCT", "unsupported installed manifest version")
+    actual = scan_product(target)
+    if actual != manifest["product_files"]:
+        changed = sorted(set(actual) ^ set(manifest["product_files"]))
+        if not changed:
+            changed = sorted(path for path in actual if actual[path] != manifest["product_files"].get(path))
+        fail("E_PRODUCT_MODIFIED", ",".join(changed[:20]))
+    try:
+        workspace_version = int((target / "WORKSPACE_VERSION").read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        fail("E_WORKSPACE_INCOMPATIBLE", "WORKSPACE_VERSION is invalid")
+    unfinished = target / ".podo-work/transactions"
+    if unfinished.is_dir() and any(path.is_dir() for path in unfinished.iterdir() if not path.name.startswith(".")):
+        fail("E_CONTEXT_RECOVERY_REQUIRED", "recover unfinished Context transactions before product update")
+    product_updates = target / ".podo-work/product-updates"
+    if product_updates.is_dir() and any(path.is_dir() for path in product_updates.iterdir() if not path.name.startswith(".")):
+        fail("E_PRODUCT_RECOVERY_REQUIRED", "unfinished product update exists")
+    return manifest, workspace_version
+
+
+def remove_product_path(path: Path) -> None:
+    if path.is_symlink():
+        fail("E_UPDATE_ROLLBACK", f"product path became a symlink: {path.name}")
+    if path.is_dir():
+        shutil.rmtree(path)
+    elif path.is_file():
+        path.unlink()
+    elif path.exists():
+        fail("E_UPDATE_ROLLBACK", f"unsupported product path: {path.name}")
+
+
+def update_inject(point: str) -> None:
+    if os.environ.get("PODO_TEST_UPDATE_FAILURES") == "1" and os.environ.get("PODO_TEST_UPDATE_FAIL_AT") == point:
+        fail("E_INJECTED_UPDATE_FAILURE", point)
+
+
+def save_update_journal(directory: Path, journal: dict[str, Any]) -> None:
+    journal["updated_at"] = now()
+    atomic_json(directory / "journal.json", journal)
+
+
+def rollback_update(target: Path, directory: Path, journal: dict[str, Any]) -> None:
+    installed = list(journal.get("installed", []))
+    backed_up = list(journal.get("backed_up", []))
+    for relative in reversed(installed):
+        remove_product_path(target / relative)
+    for relative in reversed(backed_up):
+        previous = directory / "previous" / relative
+        destination = target / relative
+        if destination.exists() or destination.is_symlink():
+            remove_product_path(destination)
+        if not previous.exists() or previous.is_symlink():
+            fail("E_UPDATE_ROLLBACK", f"previous product path is unavailable: {relative}")
+        os.replace(previous, destination)
+    journal["state"] = "rolled-back"
+    journal["rolled_back_at"] = now()
+    save_update_journal(directory, journal)
+
+
+def version_tuple(value: str) -> tuple[int, int, int]:
+    if not SEMVER_RE.fullmatch(value):
+        fail("E_VERSION", value)
+    return tuple(int(part) for part in value.split("."))  # type: ignore[return-value]
+
+
+def apply_update(
+    stage: Path,
+    target: Path,
+    desired: dict[str, Any],
+    release: dict[str, Any],
+    current: dict[str, Any],
+) -> str:
+    current_version = str(current["product_version"])
+    target_version = str(desired["product_version"])
+    if current_version == target_version:
+        if current["product_files"] == desired["product_files"]:
+            return "already-current"
+        fail("E_RELEASE_MUTATED", f"version {target_version} has different product bytes")
+    identity = hashlib.sha256(
+        f"{current_version}->{target_version}:{desired['source'].get('archive_sha256')}".encode("utf-8")
+    ).hexdigest()[:20]
+    update_id = f"product-{identity}"
+    updates = target / ".podo-work/product-updates"
+    directory = updates / update_id
+    if directory.exists() or directory.is_symlink():
+        fail("E_PRODUCT_RECOVERY_REQUIRED", update_id)
+    (directory / "staged").mkdir(parents=True)
+    (directory / "previous").mkdir()
+    for relative in PRODUCT_ROOTS:
+        os.replace(stage / relative, directory / "staged" / relative)
+    plan = {
+        "product_update_version": 1,
+        "update_id": update_id,
+        "from_version": current_version,
+        "to_version": target_version,
+        "source": desired["source"],
+        "release_notes": release.get("release_notes", ""),
+        "product_roots": list(PRODUCT_ROOTS),
+        "created_at": now(),
+    }
+    journal: dict[str, Any] = {
+        "journal_version": 1,
+        "update_id": update_id,
+        "state": "prepared",
+        "backed_up": [],
+        "installed": [],
+        "created_at": now(),
+        "updated_at": now(),
+    }
+    atomic_json(directory / "plan.json", plan)
+    save_update_journal(directory, journal)
+    try:
+        update_inject("after-prepared")
+        journal["state"] = "applying"
+        save_update_journal(directory, journal)
+        for relative in PRODUCT_ROOTS:
+            source = target / relative
+            previous = directory / "previous" / relative
+            previous.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(source, previous)
+            journal["backed_up"].append(relative)
+            save_update_journal(directory, journal)
+            update_inject(f"after-backup-{relative}")
+        for relative in PRODUCT_ROOTS:
+            staged = directory / "staged" / relative
+            destination = target / relative
+            os.replace(staged, destination)
+            journal["installed"].append(relative)
+            save_update_journal(directory, journal)
+            update_inject(f"after-install-{relative}")
+        update_inject("before-final-validation")
+        validate_workspace(target, "context-present")
+        update_inject("after-final-validation")
+        journal["state"] = "committed"
+        journal["committed_at"] = now()
+        save_update_journal(directory, journal)
+        receipt = {
+            "product_update_receipt_version": 1,
+            "update_id": update_id,
+            "outcome": "committed",
+            "from_version": current_version,
+            "to_version": target_version,
+            "source": desired["source"],
+            "committed_at": journal["committed_at"],
+        }
+        atomic_json(target / f".podo-work/product-update-receipts/{update_id}.json", receipt)
+        shutil.rmtree(directory)
+    except Exception as error:
+        try:
+            journal = load_json(directory / "journal.json", "E_UPDATE_JOURNAL")
+            journal["failure"] = {
+                "code": getattr(error, "code", "E_PRODUCT_UPDATE"),
+                "detail": str(error),
+                "at": now(),
+            }
+            save_update_journal(directory, journal)
+            rollback_update(target, directory, journal)
+            receipt = {
+                "product_update_receipt_version": 1,
+                "update_id": update_id,
+                "outcome": "rolled-back",
+                "from_version": current_version,
+                "to_version": target_version,
+                "failure": journal["failure"],
+                "rolled_back_at": journal["rolled_back_at"],
+            }
+            atomic_json(target / f".podo-work/product-update-receipts/{update_id}.json", receipt)
+            shutil.rmtree(directory)
+        except Exception as rollback_error:
+            fail("E_UPDATE_ROLLBACK", f"{error}; rollback failed: {rollback_error}")
+        if isinstance(error, InstallError):
+            raise
+        fail("E_PRODUCT_UPDATE", str(error))
+    direction = "rolled-back" if version_tuple(target_version) < version_tuple(current_version) else "updated"
+    return direction
+
+
 def normalize_target(raw: Path, package_root: Path) -> Path:
     expanded = raw.expanduser()
     if not expanded.is_absolute():
@@ -300,6 +517,7 @@ def install_package(
     source_repository: str | None,
     source_tag: str | None,
     archive_sha256: str | None,
+    update: bool = False,
 ) -> tuple[str, Path, dict[str, Any]]:
     package_root = package_root.resolve()
     release = validate_release(package_root)
@@ -314,10 +532,23 @@ def install_package(
     with tempfile.TemporaryDirectory(prefix=".podo-package-install-", dir=target.parent) as temporary:
         stage = Path(temporary) / "workspace"
         stage.mkdir()
-        manifest = build_stage(package_root, stage, source, release)
-        inject("after-staging")
-        already = inspect_target(target, manifest)
-        result = apply_fresh(stage, target, already)
+        if update:
+            if not target.is_dir() or target.is_symlink():
+                fail("E_UPDATE_WORKSPACE", str(target))
+            reject_managed_symlinks(target)
+            current, workspace_version = current_product(target)
+            if workspace_version not in release["workspace_versions"]:
+                fail(
+                    "E_WORKSPACE_INCOMPATIBLE",
+                    f"product {release['product_version']} does not support Workspace {workspace_version}",
+                )
+            manifest = build_stage(package_root, stage, source, release, workspace_version)
+            result = apply_update(stage, target, manifest, release, current)
+        else:
+            manifest = build_stage(package_root, stage, source, release)
+            inject("after-staging")
+            already = inspect_target(target, manifest)
+            result = apply_fresh(stage, target, already)
     return result, target, manifest
 
 
@@ -328,6 +559,7 @@ def package_main(package_root: Path) -> None:
     parser.add_argument("--source-repository")
     parser.add_argument("--source-tag")
     parser.add_argument("--archive-sha256")
+    parser.add_argument("--update", action="store_true")
     args = parser.parse_args()
     try:
         result, target, manifest = install_package(
@@ -337,14 +569,26 @@ def package_main(package_root: Path) -> None:
             source_repository=args.source_repository,
             source_tag=args.source_tag,
             archive_sha256=args.archive_sha256,
+            update=args.update,
         )
     except (InstallError, OSError) as error:
         code = error.code if isinstance(error, InstallError) else "E_INSTALL_IO"
         print(f"ERROR {code} {error}", file=sys.stderr)
         raise SystemExit(1)
-    print(f"{'ALREADY_INSTALLED' if result == 'already-installed' else 'INSTALLED'} {target}")
+    labels = {
+        "installed": "INSTALLED",
+        "already-installed": "ALREADY_INSTALLED",
+        "updated": "UPDATED",
+        "rolled-back": "ROLLED_BACK",
+        "already-current": "ALREADY_CURRENT",
+    }
+    print(f"{labels[result]} {target}")
     print(f"PRODUCT {manifest['product_version']} WORKSPACE {manifest['workspace_version']}")
-    print("NEXT Open this Workspace in Codex, review .codex/hooks.json, and trust the project if it is correct.")
+    if args.update:
+        print("NOTES " + str(validate_release(package_root).get("release_notes") or "No release notes."))
+        print("NEXT Start a new Codex task so updated operating policies are loaded; review hook changes before trusting them.")
+    else:
+        print("NEXT Open this Workspace in Codex, review .codex/hooks.json, and trust the project if it is correct.")
 
 
 if __name__ == "__main__":
