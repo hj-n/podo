@@ -103,6 +103,17 @@ def command_context_defer(capture_id: str, request: Path) -> int:
     return 0
 
 
+def command_context_resolve(
+    deferred_id: str,
+    capture_id: str,
+    decision: str,
+    request: Path | None,
+) -> int:
+    result = ContextStore(ROOT).resolve(deferred_id, capture_id, decision, request)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="podo")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -124,6 +135,11 @@ def main() -> None:
     defer = context_commands.add_parser("defer")
     defer.add_argument("--capture", required=True)
     defer.add_argument("--request", required=True, type=Path)
+    resolve = context_commands.add_parser("resolve")
+    resolve.add_argument("--deferred", required=True)
+    resolve.add_argument("--capture", required=True)
+    resolve.add_argument("--decision", required=True, choices=("confirmed", "rejected"))
+    resolve.add_argument("--request", type=Path)
     discard = context_commands.add_parser("discard")
     discard.add_argument("--capture", required=True)
     discard.add_argument("--reason", required=True, choices=("no-delta",))
@@ -142,6 +158,8 @@ def main() -> None:
             code = command_context_apply(args.capture, args.request)
         elif args.context_command == "defer":
             code = command_context_defer(args.capture, args.request)
+        elif args.context_command == "resolve":
+            code = command_context_resolve(args.deferred, args.capture, args.decision, args.request)
         else:
             code = command_context_discard(args.capture, args.reason)
     except ContextError as error:

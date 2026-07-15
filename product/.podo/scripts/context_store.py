@@ -190,6 +190,20 @@ class ContextStore:
             values.append(value)
         return values
 
+    def load_deferred(
+        self, capture_id: str
+    ) -> tuple[Path, dict[str, Any], Path, dict[str, Any], Path]:
+        path = self.deferred_path(capture_id)
+        if path.is_symlink() or not path.is_file():
+            fail("E_DEFERRED_MISSING", capture_id)
+        value = load_json(path, "E_DEFERRED_INVALID")
+        if value.get("capture_id") != capture_id:
+            fail("E_DEFERRED_INVALID", "deferred identity mismatch")
+        capture_dir, capture, original = self.load_capture(capture_id)
+        if capture.get("completeness") != "complete-local-transcript":
+            fail("E_CAPTURE_PARTIAL", ",".join(capture.get("missing_record_families") or []))
+        return path, value, capture_dir, capture, original
+
     def validate_request_path(self, path: Path) -> Path:
         resolved = path.resolve()
         try:
@@ -218,6 +232,7 @@ class ContextStore:
         capture: dict[str, Any],
         original: Path,
         event_request: dict[str, Any],
+        resolution: tuple[str, str, dict[str, Any], Path] | None = None,
     ) -> str:
         title = one_line(event_request.get("title"), "event.title")
         context = str(event_request.get("context") or "").strip()
@@ -242,16 +257,31 @@ class ContextStore:
             f"Missing-Record-Families: {missing_value}",
             f"SHA-256: {sha256_file(original)}",
             "Original-Entrypoint: ./original/session.jsonl",
-            "",
-            "## Context",
-            "",
-            context,
-            "",
-            "## Safety",
-            "",
-            "이 original은 capture 시점의 immutable snapshot이다. 누락 범위가 있으면 Metadata에 명시한다.",
-            "",
         ]
+        if resolution is not None:
+            deferred_id, decision, deferred, related_original = resolution
+            lines.extend(
+                [
+                    f"Resolution: {decision}",
+                    f"Resolves-Capture: {deferred_id}",
+                    f"Deferred-Summary: {deferred['summary']}",
+                    f"Related-Original: ./original/related/{deferred_id}/session.jsonl",
+                    f"Related-SHA-256: {sha256_file(related_original)}",
+                ]
+            )
+        lines.extend(
+            [
+                "",
+                "## Context",
+                "",
+                context,
+                "",
+                "## Safety",
+                "",
+                "이 original은 capture 시점의 immutable snapshot이다. 누락 범위가 있으면 Metadata에 명시한다.",
+                "",
+            ]
+        )
         return "\n".join(lines)
 
     def validate_state_text(self, text: str, state_slug: str) -> None:
@@ -433,11 +463,19 @@ class ContextStore:
             "deferred": str(deferred_path.relative_to(self.root)),
         }
 
-    def apply(self, capture_id: str, request_path: Path) -> dict[str, Any]:
+    def apply(
+        self,
+        capture_id: str,
+        request_path: Path,
+        *,
+        resolution: tuple[str, str] | None = None,
+    ) -> dict[str, Any]:
         existing_receipt = self.receipt_path(capture_id)
         if existing_receipt.exists():
             receipt = load_json(existing_receipt, "E_RECEIPT_INVALID")
             return {"status": "already-processed", "receipt": receipt}
+        if self.deferred_path(capture_id).exists():
+            fail("E_CAPTURE_DEFERRED", "resolve a deferred capture with a later user turn")
         self.validate_workspace()
         capture_dir, capture, original = self.load_capture(capture_id)
         if capture.get("completeness") != "complete-local-transcript":
@@ -451,7 +489,21 @@ class ContextStore:
         if event_dir.exists() or event_dir.is_symlink():
             fail("E_EVENT_COLLISION", event_dir.relative_to(self.root).as_posix())
         event_metadata_path = event_dir / "metadata.md"
-        event_text = self.render_event(capture, original, event_request)
+        resolution_context: tuple[str, str, dict[str, Any], Path] | None = None
+        deferred_path: Path | None = None
+        deferred_capture_dir: Path | None = None
+        deferred_capture: dict[str, Any] | None = None
+        if resolution is not None:
+            deferred_id, decision = resolution
+            if deferred_id == capture_id or decision not in {"confirmed", "rejected"}:
+                fail("E_RESOLUTION", "resolution identity or decision is invalid")
+            if self.receipt_path(deferred_id).exists():
+                fail("E_RESOLUTION", "deferred capture is already resolved")
+            deferred_path, deferred, deferred_capture_dir, deferred_capture, related_original = self.load_deferred(
+                deferred_id
+            )
+            resolution_context = (deferred_id, decision, deferred, related_original)
+        event_text = self.render_event(capture, original, event_request, resolution_context)
         plans = self.build_plans(request, capture, event_metadata_path, occurred)
 
         stage = Path(tempfile.mkdtemp(prefix=".context-apply-", dir=self.work))
@@ -462,6 +514,11 @@ class ContextStore:
             staged_event = stage / "event"
             (staged_event / "original").mkdir(parents=True)
             shutil.copy2(original, staged_event / "original/session.jsonl")
+            if resolution_context is not None:
+                deferred_id, _, _, related_original = resolution_context
+                related_dir = staged_event / f"original/related/{deferred_id}"
+                related_dir.mkdir(parents=True)
+                shutil.copy2(related_original, related_dir / "session.jsonl")
             (staged_event / "metadata.md").write_text(event_text, encoding="utf-8")
             event_dir.parent.mkdir(parents=True, exist_ok=True)
             os.replace(staged_event, event_dir)
@@ -512,8 +569,27 @@ class ContextStore:
             event=str(event_metadata_path.relative_to(self.root)),
             deltas=[str(plan.delta_path.relative_to(self.root)) for plan in plans],
             states=[str(plan.state_path.relative_to(self.root)) for plan in plans],
+            **(
+                {
+                    "resolution_of": resolution_context[0],
+                    "resolution": resolution_context[1],
+                }
+                if resolution_context is not None
+                else {}
+            ),
         )
+        if resolution_context is not None and deferred_capture is not None:
+            self.write_receipt(
+                deferred_capture,
+                resolution_context[1],
+                resolved_by_capture=capture_id,
+                event=str(event_metadata_path.relative_to(self.root)),
+            )
         shutil.rmtree(capture_dir)
+        if deferred_capture_dir is not None:
+            shutil.rmtree(deferred_capture_dir)
+        if deferred_path is not None:
+            deferred_path.unlink()
         try:
             request_resolved.unlink()
         except OSError:
@@ -524,6 +600,7 @@ class ContextStore:
             "deltas": [str(plan.delta_path.relative_to(self.root)) for plan in plans],
             "states": [str(plan.state_path.relative_to(self.root)) for plan in plans],
             "receipt": str(receipt_path.relative_to(self.root)),
+            **({"resolved_deferred": resolution_context[0]} if resolution_context is not None else {}),
         }
 
     def discard(self, capture_id: str, reason: str) -> dict[str, Any]:
@@ -532,6 +609,8 @@ class ContextStore:
         existing_receipt = self.receipt_path(capture_id)
         if existing_receipt.exists():
             return {"status": "already-processed", "receipt": load_json(existing_receipt, "E_RECEIPT_INVALID")}
+        if self.deferred_path(capture_id).exists():
+            fail("E_CAPTURE_DEFERRED", "resolve a deferred capture instead of discarding it directly")
         capture_dir, capture, _ = self.load_capture(capture_id)
         trash = self.work / f".discard-{capture_id}"
         if trash.exists():
@@ -547,4 +626,74 @@ class ContextStore:
             "status": "discarded",
             "outcome": "no-delta",
             "receipt": str(receipt_path.relative_to(self.root)),
+        }
+
+    def resolve(
+        self,
+        deferred_id: str,
+        capture_id: str,
+        decision: str,
+        request_path: Path | None,
+    ) -> dict[str, Any]:
+        if deferred_id == capture_id or decision not in {"confirmed", "rejected"}:
+            fail("E_RESOLUTION", "resolution identity or decision is invalid")
+        deferred_receipt = self.receipt_path(deferred_id)
+        if deferred_receipt.exists():
+            return {"status": "already-resolved", "receipt": load_json(deferred_receipt, "E_RECEIPT_INVALID")}
+        self.load_deferred(deferred_id)
+        if decision == "confirmed" and request_path is None:
+            fail("E_RESOLUTION_REQUEST", "confirmed resolution requires a Context apply request")
+        if request_path is not None:
+            return self.apply(capture_id, request_path, resolution=(deferred_id, decision))
+
+        current_receipt = self.receipt_path(capture_id)
+        if current_receipt.exists():
+            fail("E_RESOLUTION", "resolution capture is already processed")
+        current_dir, current_capture, _ = self.load_capture(capture_id)
+        if current_capture.get("completeness") != "complete-local-transcript":
+            fail("E_CAPTURE_PARTIAL", ",".join(current_capture.get("missing_record_families") or []))
+        deferred_path, _, deferred_dir, deferred_capture, _ = self.load_deferred(deferred_id)
+        current_trash = self.work / f".resolve-current-{capture_id}"
+        deferred_trash = self.work / f".resolve-deferred-{deferred_id}"
+        if current_trash.exists() or deferred_trash.exists():
+            fail("E_RESOLUTION_COLLISION", "resolution staging path already exists")
+        os.replace(current_dir, current_trash)
+        try:
+            os.replace(deferred_dir, deferred_trash)
+        except Exception:
+            os.replace(current_trash, current_dir)
+            raise
+        try:
+            current_receipt_path = self.write_receipt(
+                current_capture,
+                "no-delta",
+                resolution_of=deferred_id,
+                resolution="rejected",
+            )
+            self.write_receipt(
+                deferred_capture,
+                "rejected",
+                resolved_by_capture=capture_id,
+                permanent_context_changed=False,
+            )
+            deferred_path.unlink()
+        except Exception:
+            try:
+                current_receipt.unlink()
+            except OSError:
+                pass
+            try:
+                deferred_receipt.unlink()
+            except OSError:
+                pass
+            os.replace(deferred_trash, deferred_dir)
+            os.replace(current_trash, current_dir)
+            raise
+        shutil.rmtree(current_trash)
+        shutil.rmtree(deferred_trash)
+        return {
+            "status": "rejected",
+            "resolved_deferred": deferred_id,
+            "permanent_context_changed": False,
+            "receipt": str(current_receipt_path.relative_to(self.root)),
         }

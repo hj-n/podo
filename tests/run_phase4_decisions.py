@@ -74,6 +74,49 @@ def defer_request(candidates: list[str] | None = None) -> dict:
     }
 
 
+def state_request(workspace: Path, decision: str, *, title: str = "Confirmed meeting change") -> dict:
+    state_path = workspace / "state/synthetic-planning.md"
+    expected = hashlib.sha256(state_path.read_bytes()).hexdigest()
+    state = "\n".join(
+        [
+            "# Synthetic Planning",
+            "",
+            "Updated: 2026-07-15",
+            "",
+            "## Current Context",
+            "",
+            "Phase 4 resolution을 검증하는 합성 프로젝트다.",
+            "",
+            "## Current Decisions",
+            "",
+            f"- {decision}",
+            "",
+            "## Reasons",
+            "",
+            "- [Relevant Delta]({{DELTA_LINK}})",
+            "",
+        ]
+    )
+    return {
+        "event": {
+            "title": title,
+            "context": "사용자가 이전에 보류된 회의 시간 변경을 명확히 확인했다.",
+        },
+        "updates": [
+            {
+                "state_slug": "synthetic-planning",
+                "expected_state_sha256": expected,
+                "delta_title": title,
+                "changed": f"- 이전 오전 9시 결정에서 {decision}로 정정했다.",
+                "why": "사용자가 후속 turn에서 보류된 변경을 명확히 확인했다.",
+                "confidence": "confirmed",
+                "needs_confirmation": "- 없음",
+                "state_markdown": state,
+            }
+        ],
+    }
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="podo-phase4-decisions-") as temporary:
         root = Path(temporary)
@@ -98,9 +141,145 @@ def main() -> None:
         repeated = cli(workspace, "context", "defer", "--capture", capture_id, "--request", str(request))
         if repeated.returncode or json.loads(repeated.stdout).get("status") != "already-deferred":
             raise AssertionError(repeated.stdout + repeated.stderr)
+        bypass_request = request_file(
+            workspace,
+            "deferred-bypass",
+            state_request(workspace, "이 변경은 직접 적용되면 안 된다."),
+        )
+        bypassed = cli(
+            workspace,
+            "context",
+            "apply",
+            "--capture",
+            capture_id,
+            "--request",
+            str(bypass_request),
+        )
+        if bypassed.returncode == 0 or "E_CAPTURE_DEFERRED" not in bypassed.stderr:
+            raise AssertionError(bypassed.stdout + bypassed.stderr)
+        if permanent_snapshot(workspace) != before:
+            raise AssertionError("direct apply bypass changed permanent Context")
         print("PASS uncertain conflict defers once without permanent Context change")
 
-        session, turn = "invalid-session-002", "invalid-turn-002"
+        confirm_session, confirm_turn = "confirm-session-002", "confirm-turn-002"
+        confirm_source = transcript(root, confirm_session, confirm_turn)
+        confirm_id = capture(workspace, confirm_source, confirm_session, confirm_turn)
+        missing_request = cli(
+            workspace,
+            "context",
+            "resolve",
+            "--deferred",
+            capture_id,
+            "--capture",
+            confirm_id,
+            "--decision",
+            "confirmed",
+        )
+        if missing_request.returncode == 0 or "E_RESOLUTION_REQUEST" not in missing_request.stderr:
+            raise AssertionError(missing_request.stdout + missing_request.stderr)
+        if permanent_snapshot(workspace) != before:
+            raise AssertionError("confirmation without request changed permanent Context")
+        apply_request = request_file(
+            workspace,
+            "confirmed",
+            state_request(workspace, "합성 프로젝트 회의는 오전 10시에 한다."),
+        )
+        resolved = cli(
+            workspace,
+            "context",
+            "resolve",
+            "--deferred",
+            capture_id,
+            "--capture",
+            confirm_id,
+            "--decision",
+            "confirmed",
+            "--request",
+            str(apply_request),
+        )
+        if resolved.returncode:
+            raise AssertionError(resolved.stdout + resolved.stderr)
+        resolved_value = json.loads(resolved.stdout)
+        event_dir = workspace / Path(resolved_value["event"]).parent
+        if (event_dir / "original/session.jsonl").read_bytes() != confirm_source.read_bytes():
+            raise AssertionError("confirmation original changed bytes")
+        related = event_dir / f"original/related/{capture_id}/session.jsonl"
+        if related.read_bytes() != transcript(root, session, turn).read_bytes():
+            raise AssertionError("deferred related original changed bytes")
+        metadata = (event_dir / "metadata.md").read_text(encoding="utf-8")
+        if f"Resolves-Capture: {capture_id}" not in metadata or "Resolution: confirmed" not in metadata:
+            raise AssertionError(metadata)
+        state_text = (workspace / "state/synthetic-planning.md").read_text(encoding="utf-8")
+        if "오전 10시" not in state_text or "금요일 오전 9시" in state_text:
+            raise AssertionError(state_text)
+        delta_text = (workspace / resolved_value["deltas"][0]).read_text(encoding="utf-8")
+        if "이전 오전 9시" not in delta_text or "오전 10시" not in delta_text:
+            raise AssertionError(delta_text)
+        old_receipt = json.loads((workspace / f".podo-work/receipts/{capture_id}.json").read_text(encoding="utf-8"))
+        if old_receipt.get("outcome") != "confirmed" or old_receipt.get("resolved_by_capture") != confirm_id:
+            raise AssertionError(str(old_receipt))
+        repeated = cli(
+            workspace,
+            "context",
+            "resolve",
+            "--deferred",
+            capture_id,
+            "--capture",
+            confirm_id,
+            "--decision",
+            "confirmed",
+        )
+        if repeated.returncode or json.loads(repeated.stdout).get("status") != "already-resolved":
+            raise AssertionError(repeated.stdout + repeated.stderr)
+        print("PASS confirmed resolution preserves confirmation and deferred originals")
+
+        reject_session, reject_turn = "reject-source-session-003", "reject-source-turn-003"
+        reject_deferred_id = capture(
+            workspace,
+            transcript(root, reject_session, reject_turn),
+            reject_session,
+            reject_turn,
+        )
+        reject_request = request_file(workspace, "reject-defer", defer_request())
+        deferred_result = cli(
+            workspace,
+            "context",
+            "defer",
+            "--capture",
+            reject_deferred_id,
+            "--request",
+            str(reject_request),
+        )
+        if deferred_result.returncode:
+            raise AssertionError(deferred_result.stdout + deferred_result.stderr)
+        before_rejection = permanent_snapshot(workspace)
+        answer_session, answer_turn = "reject-answer-session-004", "reject-answer-turn-004"
+        answer_id = capture(workspace, transcript(root, answer_session, answer_turn), answer_session, answer_turn)
+        rejected = cli(
+            workspace,
+            "context",
+            "resolve",
+            "--deferred",
+            reject_deferred_id,
+            "--capture",
+            answer_id,
+            "--decision",
+            "rejected",
+        )
+        if rejected.returncode or json.loads(rejected.stdout).get("status") != "rejected":
+            raise AssertionError(rejected.stdout + rejected.stderr)
+        if permanent_snapshot(workspace) != before_rejection:
+            raise AssertionError("receipt-only rejection changed permanent Context")
+        rejection_receipt = json.loads(
+            (workspace / f".podo-work/receipts/{reject_deferred_id}.json").read_text(encoding="utf-8")
+        )
+        if rejection_receipt.get("outcome") != "rejected" or rejection_receipt.get("resolved_by_capture") != answer_id:
+            raise AssertionError(str(rejection_receipt))
+        print("PASS rejected resolution closes both captures without permanent Context change")
+
+        before = permanent_snapshot(workspace)
+
+        session, turn = "invalid-session-005", "invalid-turn-005"
         invalid_id = capture(workspace, transcript(root, session, turn), session, turn)
         invalid = defer_request(["Not A State"])
         invalid_request = request_file(workspace, "invalid", invalid)
@@ -114,7 +293,7 @@ def main() -> None:
             raise AssertionError("invalid defer changed permanent Context")
         print("PASS invalid defer request preserves pending capture")
 
-        session, turn = "partial-session-003", "partial-turn-003"
+        session, turn = "partial-session-006", "partial-turn-006"
         partial_id = capture(workspace, transcript(root, session, turn, partial=True), session, turn)
         partial_request = request_file(workspace, "partial", defer_request())
         failed = cli(workspace, "context", "defer", "--capture", partial_id, "--request", str(partial_request))
