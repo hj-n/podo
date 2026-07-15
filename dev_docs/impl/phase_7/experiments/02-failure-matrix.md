@@ -21,4 +21,6 @@
 
 ## Status
 
-Contract defined; executable failure injection remains pending.
+Apply boundaries passed on 2026-07-15. Full rollback boundaries remain pending.
+
+`after-backup`, transaction preparation, each of the three product roots, affected user path, `WORKSPACE_VERSION`, before/after final validation failures all preserved the exact previous product and selected user file hash/mode. Complete backups remained and handled transaction directories were cleaned.
