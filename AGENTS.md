@@ -146,6 +146,12 @@ dev_docs/impl/phase_<n>/
 
 Canonical command가 생기면 이 파일의 명령 목록을 실제 동작과 일치하게 갱신한다. 존재하지 않는 명령을 미리 문서화하지 않는다.
 
+## Canonical Development Commands
+
+- Phase 1 전체 계약 검증: `python3 tests/run_phase1_contracts.py`
+- 합성 Workspace 조립: `python3 tools/build_synthetic_workspace.py --output <empty-directory>`
+- 조립된 Workspace 검증: `python3 tools/validate_workspace.py <workspace-directory>`
+
 ## Data Safety
 
 - API key, token, credential, private transcript 또는 실제 개인 데이터를 commit하지 않는다.

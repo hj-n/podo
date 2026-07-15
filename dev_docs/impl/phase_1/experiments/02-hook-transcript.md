@@ -23,7 +23,7 @@ Pass for the Phase 1 contract.
 - Required identity는 session ID와 turn ID를 모두 포함한다.
 - Unknown runtime, source 누락, identity mismatch와 unknown required record family는 fail-closed다.
 - App Server historical read는 최대 `partial`로 제한된다.
-- 실제 capture entrypoint는 아직 없고 scripts README가 Phase 3 전 설치 금지를 명시한다.
+- Hook target에는 입력을 검증한 뒤 exit 78 `PODO_CAPTURE_NOT_IMPLEMENTED`로 종료하는 fail-closed guard가 있다. 실제 transcript adapter와 Event writer는 아직 없다.
 
 ## Evidence
 
@@ -35,3 +35,5 @@ Pass for the Phase 1 contract.
 ## Decision
 
 Hook은 source identity trigger로만 유지한다. Phase 3에서 version-specific adapter와 capture entrypoint가 acceptance를 통과하기 전에는 이 product tree를 설치 가능한 Podo로 공개하지 않는다. 성공하는 placeholder는 만들지 않는다.
+
+Phase 1 guard의 명시적 실패는 placeholder 성공이 아니며 Event, Delta 또는 State를 수정하지 않는다.

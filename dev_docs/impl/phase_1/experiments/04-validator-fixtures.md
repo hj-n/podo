@@ -11,7 +11,7 @@
 - `tools/build_synthetic_workspace.py`: product tree와 template을 disposable Workspace에 조립
 - `tools/validate_workspace.py`: checked-in contract에 따라 Workspace 검증
 
-`tests/fixtures/phase1_cases.json`은 유효한 합성 Workspace에 한 가지 손상만 주입하는 8개 case와 기대 error code를 정의한다. `tests/run_phase1_contracts.py`가 두 번의 deterministic build, 정상 validation과 모든 failure case를 실행한다.
+`tests/fixtures/phase1_cases.json`은 유효한 합성 Workspace에 한 가지 손상만 주입하는 9개 case와 기대 error code를 정의한다. `tests/run_phase1_contracts.py`가 두 번의 deterministic build, 정상 validation과 모든 failure case를 실행한다.
 
 ## Expected
 
@@ -21,7 +21,7 @@
 
 Pass.
 
-두 개의 독립된 temporary Workspace가 동일한 digest로 생성됐고 모두 validation을 통과했다. 8개 손상 fixture는 성공한 척하지 않고 각각 기대한 code로 실패했다.
+두 개의 독립된 temporary Workspace가 동일한 digest로 생성됐고 모두 validation을 통과했다. 9개 손상 fixture는 성공한 척하지 않고 각각 기대한 code로 실패했다. Fail-closed capture guard는 입력을 검증한 뒤 exit 78로 종료했으며 Workspace를 수정하지 않았다.
 
 검증 범위는 required paths, ownership, product·Workspace version compatibility, hook shape, user config, Event timestamps·completeness·original·hash, Delta links, State links, TODO dates와 unresolved template token이다.
 
@@ -35,7 +35,10 @@ Pass.
 - `PASS checked-todo-missing-completed -> E_TODO_COMPLETED`
 - `PASS unresolved-template-token -> E_TEMPLATE_TOKEN`
 - `PASS incompatible-workspace-version -> E_VERSION_COMPATIBILITY`
-- First deterministic digest: `1cdb24e1849ec06502b381d243eb236a831f25c83f622737377f1397a2ca2b61`
+- `PASS missing-hook-entrypoint -> E_HOOK`
+- `PASS capture-guard -> PODO_CAPTURE_NOT_IMPLEMENTED (78)`
+- Final deterministic digest: `38d36ec7fc3d0573ce905b261ba7d41f10a226ccee5387a952fd23a406038e58`
+- The digest was identical with and without local Python cache files.
 
 ## Decision
 

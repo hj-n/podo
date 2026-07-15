@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -150,6 +151,9 @@ class Validator:
         expected = "./" + hook_contract.get("entrypoint", "")
         if command_handler.get("command") != expected:
             self.add("E_HOOK", hook_path, f"command must be {expected}")
+        entrypoint = self.root / hook_contract.get("entrypoint", "")
+        if not entrypoint.is_file() or not os.access(entrypoint, os.X_OK):
+            self.add("E_HOOK", hook_path, "capture entrypoint must exist and be executable")
         timeout = command_handler.get("timeout")
         if not isinstance(timeout, int) or timeout < 1 or timeout > 60:
             self.add("E_HOOK", hook_path, "timeout must be an integer from 1 to 60 seconds")

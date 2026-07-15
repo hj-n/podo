@@ -68,6 +68,8 @@ def mutate(root: Path, name: str) -> None:
         replace(state, "Phase 1 데이터 계약", "{{UNRESOLVED_TOKEN}} 데이터 계약")
     elif name == "incompatible-workspace-version":
         (root / "WORKSPACE_VERSION").write_text("2\n", encoding="utf-8")
+    elif name == "missing-hook-entrypoint":
+        (root / ".podo/scripts/capture_event").unlink()
     else:
         raise AssertionError(f"unknown fixture mutation: {name}")
 
@@ -84,6 +86,27 @@ def main() -> None:
         run([sys.executable, str(VALIDATE), str(second)])
         if digest_tree(first) != digest_tree(second):
             raise AssertionError("two synthetic Workspace builds are not deterministic")
+
+        before_guard = digest_tree(first)
+        hook_payload = {
+            "hook_event_name": "Stop",
+            "session_id": "synthetic-session",
+            "turn_id": "synthetic-turn",
+            "transcript_path": "/tmp/synthetic-transcript.jsonl",
+            "cwd": str(first),
+            "model": "synthetic-model",
+        }
+        guard = subprocess.run(
+            [str(first / ".podo/scripts/capture_event")],
+            input=json.dumps(hook_payload),
+            text=True,
+            capture_output=True,
+        )
+        if guard.returncode != 78 or "PODO_CAPTURE_NOT_IMPLEMENTED" not in guard.stderr:
+            raise AssertionError(f"capture guard did not fail closed\n{guard.stdout}{guard.stderr}")
+        if digest_tree(first) != before_guard:
+            raise AssertionError("capture guard modified the synthetic Workspace")
+        print("PASS capture-guard -> PODO_CAPTURE_NOT_IMPLEMENTED (78)")
 
         for case in cases:
             damaged = base / case["name"]

@@ -46,7 +46,11 @@ def build(output: Path) -> None:
 
     shutil.copyfile(PRODUCT_ROOT / "AGENTS.podo.md", output / "AGENTS.md")
     shutil.copytree(PRODUCT_ROOT / ".codex", output / ".codex")
-    shutil.copytree(PRODUCT_ROOT / ".podo", output / ".podo")
+    shutil.copytree(
+        PRODUCT_ROOT / ".podo",
+        output / ".podo",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+    )
 
     for directory in (
         ".podo-work",
