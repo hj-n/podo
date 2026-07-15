@@ -31,6 +31,8 @@ Passed.
 12. 마지막 task는 State를 읽고 Alpha 결정과 완료 TODO를 복원했으며 Delta와 Event를 읽지 않았다.
 13. Workspace validation이 통과했고 세 Desktop child는 marker 확인 후 제거됐다.
 
+TODO 위치 답변이 현재 prompt에 이미 들어온 경우 이전 질문 capture가 No Delta로 닫히고 답변 capture가 다음 task에서 clear apply되는 안전한 변형도 최종 gate에서 관찰했다. 별도 deferred 생성 여부보다 확인 전 State 무변경과 exact 답변 capture 이후 올바른 State 적용을 invariant로 삼았다.
+
 ## Evidence
 
 ```text

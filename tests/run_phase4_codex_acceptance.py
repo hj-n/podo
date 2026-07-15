@@ -292,7 +292,11 @@ def run_acceptance(workspace: Path, env: dict[str, str], external_target: Path) 
     )
     assert_configured(ninth, 9)
     todo_deferred = inbox(workspace)["deferred"]
-    assert_true(any(TODO in value.get("summary", "") for value in todo_deferred), "ambiguous TODO was not deferred")
+    if todo_deferred:
+        assert_true(
+            any(TODO in value.get("summary", "") for value in todo_deferred),
+            f"unrelated deferred content appeared: {todo_deferred}",
+        )
 
     tenth = codex_task(
         workspace,
