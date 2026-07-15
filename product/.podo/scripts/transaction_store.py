@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import difflib
 import json
 import os
 import shutil
@@ -96,6 +97,42 @@ def atomic_copy(source: Path, target: Path, mode: int) -> None:
         except OSError:
             pass
         raise
+
+
+def change_chunks(base: list[str], variant: list[str]) -> list[tuple[int, int, list[str]]]:
+    matcher = difflib.SequenceMatcher(a=base, b=variant, autojunk=False)
+    return [(i1, i2, variant[j1:j2]) for tag, i1, i2, j1, j2 in matcher.get_opcodes() if tag != "equal"]
+
+
+def chunks_overlap(left: tuple[int, int, list[str]], right: tuple[int, int, list[str]]) -> bool:
+    left_start, left_end, _ = left
+    right_start, right_end, _ = right
+    if left_start == left_end and right_start == right_end:
+        return left_start == right_start
+    if left_start == left_end:
+        return right_start <= left_start <= right_end
+    if right_start == right_end:
+        return left_start <= right_start <= left_end
+    return max(left_start, right_start) < min(left_end, right_end)
+
+
+def strict_three_way_merge(base_text: str, current_text: str, proposed_text: str) -> str | None:
+    base = base_text.splitlines(keepends=True)
+    current = current_text.splitlines(keepends=True)
+    proposed = proposed_text.splitlines(keepends=True)
+    current_changes = change_chunks(base, current)
+    proposed_changes = change_chunks(base, proposed)
+    for current_change in current_changes:
+        for proposed_change in proposed_changes:
+            if chunks_overlap(current_change, proposed_change):
+                if current_change == proposed_change:
+                    continue
+                return None
+    merged = list(base)
+    changes = current_changes + [change for change in proposed_changes if change not in current_changes]
+    for start, end, replacement in sorted(changes, key=lambda value: (value[0], value[1]), reverse=True):
+        merged[start:end] = replacement
+    return "".join(merged)
 
 
 class TransactionManager:
@@ -216,7 +253,8 @@ class TransactionManager:
                     {
                         "step": f"state:{update['state_slug']}", "state_slug": update["state_slug"],
                         "staged": state_stage.relative_to(directory).as_posix(), "target": self.relative(Path(update["state_target"])),
-                        "expected_sha256": original_sha, "new_sha256": sha256_file(state_stage), "original": original_stage,
+                        "base_sha256": original_sha, "expected_sha256": original_sha,
+                        "new_sha256": sha256_file(state_stage), "original": original_stage,
                         "mode": f"{int(update['mode']):04o}",
                     }
                 )
@@ -311,14 +349,46 @@ class TransactionManager:
         if sha256_file(target) != expected_sha:
             fail("E_TRANSACTION_COPY", f"file copy mismatch: {self.relative(target)}")
 
-    def install_state(self, directory: Path, entry: dict[str, Any]) -> None:
+    def install_state(
+        self,
+        directory: Path,
+        plan: dict[str, Any],
+        entry: dict[str, Any],
+        validate_state: Callable[[str, str], None],
+    ) -> None:
         staged = directory / entry["staged"]
         target = self.rooted(entry["target"])
         actual = sha256_file(target) if target.is_file() and not target.is_symlink() else None
         if actual == entry["new_sha256"]:
             return
-        if target.is_symlink() or (target.exists() and not target.is_file()) or actual != entry.get("expected_sha256"):
-            fail("E_STATE_STALE", f"State changed before commit: {entry['state_slug']}")
+        if target.is_symlink() or (target.exists() and not target.is_file()):
+            fail("E_STATE_CONFLICT", f"State path changed type: {entry['state_slug']}")
+        if actual != entry.get("expected_sha256"):
+            original_value = entry.get("original")
+            if actual is None or not original_value:
+                fail("E_STATE_CONFLICT", f"State concurrently created or removed: {entry['state_slug']}")
+            original = directory / original_value
+            merged = strict_three_way_merge(
+                original.read_text(encoding="utf-8"),
+                target.read_text(encoding="utf-8"),
+                staged.read_text(encoding="utf-8"),
+            )
+            if merged is None:
+                fail("E_STATE_CONFLICT", f"State has overlapping changes: {entry['state_slug']}")
+            validate_state(merged, str(entry["state_slug"]))
+            staged.write_text(merged, encoding="utf-8")
+            staged.chmod(int(entry["mode"], 8))
+            entry["expected_sha256"] = actual
+            entry["new_sha256"] = sha256_file(staged)
+            entry["merge"] = {
+                "kind": "strict-non-overlapping-three-way",
+                "base_sha256": entry.get("base_sha256"),
+                "current_sha256": actual,
+                "merged_sha256": entry["new_sha256"],
+                "at": now(),
+            }
+            atomic_json(directory / "plan.json", plan)
+        validate_state(staged.read_text(encoding="utf-8"), str(entry["state_slug"]))
         atomic_copy(staged, target, int(entry["mode"], 8))
 
     def cleanup_sources(self, plan: dict[str, Any]) -> None:
@@ -339,7 +409,12 @@ class TransactionManager:
             else:
                 fail("E_TRANSACTION_CLEANUP", f"cleanup path type changed: {entry['path']}")
 
-    def commit(self, transaction_id: str, validate_workspace: Callable[[], None]) -> dict[str, Any]:
+    def commit(
+        self,
+        transaction_id: str,
+        validate_workspace: Callable[[], None],
+        validate_state: Callable[[str, str], None],
+    ) -> dict[str, Any]:
         directory, plan, journal = self.load(transaction_id)
         completed = set(journal.get("completed", []))
         try:
@@ -359,7 +434,7 @@ class TransactionManager:
             for index, entry in enumerate(plan["states"]):
                 if entry["step"] not in completed:
                     self.start_step(directory, journal, entry["step"])
-                    self.install_state(directory, entry)
+                    self.install_state(directory, plan, entry, validate_state)
                     self.mark_completed(directory, journal, entry["step"]); completed.add(entry["step"])
                 self.inject(directory, journal, f"after-state-{index + 1}")
             for index, entry in enumerate(plan["receipts"]):
@@ -385,7 +460,7 @@ class TransactionManager:
             try:
                 journal = load_json(directory / "journal.json", "E_TRANSACTION_JOURNAL")
                 journal["state"] = "recovery-required"
-                if journal.get("failure", {}).get("code") != "E_INJECTED_FAILURE":
+                if not (isinstance(error, TransactionError) and error.code == "E_INJECTED_FAILURE"):
                     journal["failure"] = {
                         "code": getattr(error, "code", "E_TRANSACTION_COMMIT"),
                         "detail": str(error),

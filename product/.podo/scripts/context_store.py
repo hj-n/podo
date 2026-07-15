@@ -297,10 +297,11 @@ class ContextStore:
         )
         return "\n".join(lines)
 
-    def validate_state_text(self, text: str, state_slug: str) -> None:
-        if text.count("{{DELTA_LINK}}") != 1:
+    def validate_state_text(self, text: str, state_slug: str, *, requires_delta_token: bool = True) -> None:
+        if requires_delta_token and text.count("{{DELTA_LINK}}") != 1:
             fail("E_REQUEST_STATE_LINK", f"{state_slug} must contain exactly one {{{{DELTA_LINK}}}} token")
-        other_tokens = [token for token in TOKEN_RE.findall(text) if token != "{{DELTA_LINK}}"]
+        allowed = "{{DELTA_LINK}}" if requires_delta_token else None
+        other_tokens = [token for token in TOKEN_RE.findall(text) if token != allowed]
         if other_tokens:
             fail("E_REQUEST_TOKEN", f"{state_slug} has unresolved template tokens")
         fields = {match.group(1): match.group(2).strip() for match in FIELD_RE.finditer(text)}
@@ -606,7 +607,15 @@ class ContextStore:
                 receipts=receipts,
                 cleanup=cleanup,
             )
-            transaction_result = transaction.commit(transaction_id, self.validate_workspace)
+            transaction_result = transaction.commit(
+                transaction_id,
+                self.validate_workspace,
+                lambda state_text, state_slug: self.validate_state_text(
+                    state_text,
+                    state_slug,
+                    requires_delta_token=False,
+                ),
+            )
         except TransactionError as error:
             fail(error.code, error.detail)
         return {
