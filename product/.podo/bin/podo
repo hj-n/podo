@@ -16,6 +16,8 @@ PODO = ROOT / ".podo"
 sys.path.insert(0, str(PODO / "scripts"))
 
 from context_store import ContextError, ContextStore  # noqa: E402
+from recovery_store import RecoveryStore  # noqa: E402
+from transaction_store import TransactionError, TransactionManager  # noqa: E402
 
 
 def read_version() -> str:
@@ -73,16 +75,33 @@ def command_inbox(as_json: bool) -> int:
     store = ContextStore(ROOT)
     values = store.list_inbox()
     deferred = store.list_deferred()
+    try:
+        recovery_required = TransactionManager(ROOT).unfinished()
+    except TransactionError as error:
+        raise ContextError(error.code, error.detail) from error
     if as_json:
-        print(json.dumps({"pending": values, "deferred": deferred}, ensure_ascii=False, indent=2))
-    elif not values and not deferred:
+        print(json.dumps({"pending": values, "deferred": deferred, "recovery_required": recovery_required}, ensure_ascii=False, indent=2))
+    elif not values and not deferred and not recovery_required:
         print("Inbox is empty.")
     else:
         for value in values:
             print(f"{value['capture_id']} | {value['completeness']} | {value['user_preview']}")
         for value in deferred:
             print(f"{value['capture_id']} | deferred | {value['summary']}")
+        for value in recovery_required:
+            print(f"{value} | recovery-required")
     return 0
+
+
+def command_doctor(as_json: bool) -> int:
+    result = RecoveryStore(ROOT).doctor()
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"Podo doctor: {result['status']} ({result['finding_count']} findings)")
+        for finding in result["findings"]:
+            print(f"{finding['severity'].upper()} {finding['code']} {finding['summary']}")
+    return 0 if result["status"] == "healthy" else 1
 
 
 def command_context_apply(capture_id: str, request: Path) -> int:
@@ -125,6 +144,8 @@ def main() -> None:
         default="context-present",
     )
     subparsers.add_parser("hook-status")
+    doctor = subparsers.add_parser("doctor")
+    doctor.add_argument("--json", action="store_true")
     inbox = subparsers.add_parser("inbox")
     inbox.add_argument("--json", action="store_true")
     context = subparsers.add_parser("context")
@@ -152,6 +173,8 @@ def main() -> None:
             code = command_validate(args.mode)
         elif args.command == "hook-status":
             code = command_hook_status()
+        elif args.command == "doctor":
+            code = command_doctor(args.json)
         elif args.command == "inbox":
             code = command_inbox(args.json)
         elif args.context_command == "apply":
