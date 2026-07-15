@@ -108,7 +108,10 @@ Phase 4 판단 lifecycle과 TODO 검증:
 ```bash
 python3 tests/run_phase4_decisions.py
 python3 tests/run_phase4_todo.py
+python3 tests/run_phase4_codex_acceptance.py
 ```
+
+마지막 command는 Desktop의 marker-owned Workspace에서 실제 새 Codex 작업들을 이어 decision, defer, confirmation, TODO 위치·완료, credential 제외와 State-first 복원을 검증한 뒤 모두 정리한다.
 
 ## Repository Map
 
