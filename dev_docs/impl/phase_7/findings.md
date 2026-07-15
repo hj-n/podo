@@ -24,3 +24,13 @@ Phase 7 실험 결과와 migration limitation을 기록한다.
 - Across six real Codex tasks, natural-language requests preserved all four approval boundaries: update-only, migration review/apply, and full rollback review/apply.
 - Response wording is not sufficient acceptance evidence; command traces, installed versions, plan/backup timing and State hashes independently confirmed behavior.
 - A new task after product/data replacement reads the installed policy and current State without repeating migration or rollback.
+
+## Known Limitations
+
+- Product 0.6.0 is an unpublished development candidate. Public installs still receive v0.5.3.
+- No real Workspace format 2 or production migration descriptor has been adopted; all 1→2/3 evidence is synthetic.
+- Migration entrypoints come from a checksum-verified target package and run against staging, but they are not isolated by a separate OS sandbox. Undeclared staged user changes and product changes are detected before apply; arbitrary external side effects are outside this engine's guarantee.
+- A hard process kill can leave a migration journal and partially applied filesystem state. Doctor/startup diagnose and block further update, but automatic interrupted-migration recovery is not claimed.
+- Backups may duplicate sensitive Event data. They remain local and are not automatically deleted, encrypted or uploaded.
+- Full rollback currently requires the installed product to remain the exact committed migration target; a later product update must be resolved before using that backup.
+- Apply serialization uses `flock`, matching the current macOS/Linux support boundary; Windows native support is not claimed.
