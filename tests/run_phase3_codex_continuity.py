@@ -188,8 +188,8 @@ def run_continuity(workspace: Path, env: dict[str, str]) -> None:
         workspace,
         env,
         (
-            "이전 합성 연속성 논의를 이어가자. 현재 결정 marker, TODO marker와 마감일을 알려줘. "
-            "marker 문자열은 바꾸지 마."
+            "startup policy대로 이전 pending capture의 명확히 확정된 결정과 TODO를 Context에 적용한 뒤 "
+            "현재 결정 marker, TODO marker와 마감일을 알려줘. marker 문자열은 바꾸지 마."
         ),
     )
     second_messages = final_messages(second)
@@ -200,7 +200,13 @@ def run_continuity(workspace: Path, env: dict[str, str]) -> None:
     events = [path for path in snapshot if path.startswith("events/") and path.endswith("/metadata.md")]
     deltas = [path for path in snapshot if path.startswith("deltas/")]
     states = [path for path in snapshot if path.startswith("state/")]
-    assert_true(len(events) == 1 and len(deltas) == 1 and len(states) == 1, f"unexpected Context shape: {snapshot}")
+    assert_true(
+        len(events) == 1 and len(deltas) == 1 and len(states) == 1,
+        (
+            f"unexpected Context shape: {snapshot}; commands={executed_commands(second)}; "
+            f"messages={second_messages}; inbox={inbox_metadata(workspace)}"
+        ),
+    )
     state_text = (workspace / states[0]).read_text(encoding="utf-8")
     for expected in (DECISION, TODO, DUE):
         assert_true(expected in state_text, f"State is missing {expected}")
