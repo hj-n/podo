@@ -16,7 +16,7 @@ PODO = ROOT / ".podo"
 sys.path.insert(0, str(PODO / "scripts"))
 
 from context_store import ContextError, ContextStore  # noqa: E402
-from recovery_store import RecoveryStore  # noqa: E402
+from recovery_store import RecoveryError, RecoveryStore  # noqa: E402
 from transaction_store import TransactionError, TransactionManager  # noqa: E402
 
 
@@ -104,6 +104,22 @@ def command_doctor(as_json: bool) -> int:
     return 0 if result["status"] == "healthy" else 1
 
 
+def command_recover(as_json: bool, plan_id: str | None) -> int:
+    store = RecoveryStore(ROOT)
+    result = store.apply_recovery(plan_id) if plan_id else store.plan_recovery()
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif plan_id:
+        print(f"Recovery {result['status']}: {result['plan_id']}")
+    elif result["status"] == "nothing-to-recover":
+        print("Nothing to recover.")
+    else:
+        print(f"Recovery planning: {result['status']}")
+        for plan in result["plans"]:
+            print(f"{plan['plan_id']} | {plan['action']} | {plan['transaction_id']}")
+    return 0 if result["status"] in {"planned", "nothing-to-recover", "applied", "already-applied"} else 1
+
+
 def command_context_apply(capture_id: str, request: Path) -> int:
     result = ContextStore(ROOT).apply(capture_id, request)
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -146,6 +162,9 @@ def main() -> None:
     subparsers.add_parser("hook-status")
     doctor = subparsers.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
+    recover = subparsers.add_parser("recover")
+    recover.add_argument("--json", action="store_true")
+    recover.add_argument("--apply", metavar="PLAN_ID")
     inbox = subparsers.add_parser("inbox")
     inbox.add_argument("--json", action="store_true")
     context = subparsers.add_parser("context")
@@ -175,6 +194,8 @@ def main() -> None:
             code = command_hook_status()
         elif args.command == "doctor":
             code = command_doctor(args.json)
+        elif args.command == "recover":
+            code = command_recover(args.json, args.apply)
         elif args.command == "inbox":
             code = command_inbox(args.json)
         elif args.context_command == "apply":
@@ -185,7 +206,7 @@ def main() -> None:
             code = command_context_resolve(args.deferred, args.capture, args.decision, args.request)
         else:
             code = command_context_discard(args.capture, args.reason)
-    except ContextError as error:
+    except (ContextError, RecoveryError) as error:
         print(f"ERROR {error.code} {error.detail}", file=sys.stderr)
         code = 1
     raise SystemExit(code)

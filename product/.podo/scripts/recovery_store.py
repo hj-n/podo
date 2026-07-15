@@ -14,10 +14,24 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from transaction_store import TransactionError, TransactionManager
+from transaction_store import (
+    TransactionError,
+    TransactionManager,
+    atomic_json,
+    strict_three_way_merge,
+    tree_hash,
+)
 
 
 FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*(.+)$", re.MULTILINE)
+PLAN_ID_RE = re.compile(r"^recovery-[a-f0-9]{20}$")
+
+
+class RecoveryError(Exception):
+    def __init__(self, code: str, detail: str):
+        super().__init__(detail)
+        self.code = code
+        self.detail = detail
 
 
 def sha256_file(path: Path) -> str:
@@ -39,6 +53,7 @@ class RecoveryStore:
         self.root = root.resolve()
         self.work = self.root / ".podo-work"
         self.transactions = TransactionManager(self.root)
+        self.recovery_plans = self.work / "recovery-plans"
 
     def finding(
         self,
@@ -239,4 +254,223 @@ class RecoveryStore:
             "checked_at": datetime.now(timezone.utc).isoformat(),
             "finding_count": len(findings),
             "findings": findings,
+        }
+
+    def fingerprint(self, path: Path) -> dict[str, Any]:
+        if path.is_symlink():
+            return {"kind": "symlink", "target": os.readlink(path)}
+        if not path.exists():
+            return {"kind": "missing"}
+        if path.is_file():
+            return {
+                "kind": "file",
+                "sha256": sha256_file(path),
+                "mode": f"{stat.S_IMODE(path.stat().st_mode):04o}",
+            }
+        if path.is_dir():
+            return {
+                "kind": "directory",
+                "tree_sha256": tree_hash(path),
+                "mode": f"{stat.S_IMODE(path.stat().st_mode):04o}",
+            }
+        return {"kind": "other"}
+
+    def add_pin(self, pins: dict[str, dict[str, Any]], path: Path) -> None:
+        relative = self.transactions.relative(path)
+        pins[relative] = self.fingerprint(path)
+
+    def exact_file_or_missing(
+        self,
+        entry: dict[str, Any],
+        manual: list[str],
+    ) -> None:
+        target = self.transactions.rooted(str(entry["target"]))
+        current = self.fingerprint(target)
+        if current["kind"] == "missing":
+            return
+        if current["kind"] == "file" and current.get("sha256") == entry["sha256"]:
+            return
+        manual.append(f"{entry['target']} is neither absent nor the staged file")
+
+    def analyze_state(
+        self,
+        directory: Path,
+        entry: dict[str, Any],
+        manual: list[str],
+    ) -> None:
+        target = self.transactions.rooted(str(entry["target"]))
+        current = self.fingerprint(target)
+        if current["kind"] == "file" and current.get("sha256") == entry["new_sha256"]:
+            return
+        expected = entry.get("expected_sha256")
+        if current["kind"] == "missing" and expected is None:
+            return
+        if current["kind"] == "file" and current.get("sha256") == expected:
+            return
+        original_value = entry.get("original")
+        if current["kind"] != "file" or not original_value:
+            manual.append(f"{entry['target']} was created, removed or changed type outside the transaction")
+            return
+        original = directory / str(original_value)
+        staged = directory / str(entry["staged"])
+        try:
+            merged = strict_three_way_merge(
+                original.read_text(encoding="utf-8"),
+                target.read_text(encoding="utf-8"),
+                staged.read_text(encoding="utf-8"),
+            )
+        except (OSError, UnicodeError) as error:
+            manual.append(f"{entry['target']} cannot be compared safely: {error}")
+            return
+        if merged is None:
+            manual.append(f"{entry['target']} has overlapping concurrent changes")
+
+    def build_transaction_recovery(self, transaction_id: str) -> dict[str, Any]:
+        directory, transaction_plan, journal = self.transactions.load(transaction_id)
+        manual: list[str] = []
+        event = transaction_plan["event"]
+        event_target = self.transactions.rooted(str(event["target"]))
+        event_current = self.fingerprint(event_target)
+        if event_current["kind"] != "missing" and not (
+            event_current["kind"] == "directory"
+            and event_current.get("tree_sha256") == event["tree_sha256"]
+        ):
+            manual.append(f"{event['target']} is neither absent nor the staged Event")
+        for entry in transaction_plan["deltas"] + transaction_plan["receipts"]:
+            self.exact_file_or_missing(entry, manual)
+        for entry in transaction_plan["states"]:
+            self.analyze_state(directory, entry, manual)
+
+        pins: dict[str, dict[str, Any]] = {}
+        for relative in ("plan.json", "journal.json", "staged", "originals"):
+            self.add_pin(pins, directory / relative)
+        targets = [event["target"]]
+        targets.extend(entry["target"] for key in ("deltas", "states", "receipts") for entry in transaction_plan[key])
+        cleanup = [entry["path"] for entry in transaction_plan.get("cleanup", [])]
+        for value in targets + cleanup:
+            self.add_pin(pins, self.transactions.rooted(str(value)))
+
+        action = "manual-confirmation-required" if manual else "resume-transaction"
+        material = {
+            "transaction_id": transaction_id,
+            "action": action,
+            "pins": pins,
+            "manual_reasons": manual,
+        }
+        digest = hashlib.sha256(
+            json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:20]
+        plan_id = f"recovery-{digest}"
+        return {
+            "recovery_plan_version": 1,
+            "plan_id": plan_id,
+            "status": "planned",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "transaction_id": transaction_id,
+            "transaction_state": journal.get("state"),
+            "action": action,
+            "impact": {
+                "targets": targets,
+                "cleanup_after_validation": cleanup,
+                "preserves_transaction_until_success": True,
+            },
+            "manual_reasons": manual,
+            "pins": dict(sorted(pins.items())),
+        }
+
+    def save_recovery_plan(self, plan: dict[str, Any]) -> dict[str, Any]:
+        path = self.recovery_plans / f"{plan['plan_id']}.json"
+        if path.is_symlink():
+            raise RecoveryError("E_RECOVERY_PLAN_PATH", str(path.relative_to(self.root)))
+        if path.is_file():
+            existing, error = load_json_safe(path)
+            if error or existing is None:
+                raise RecoveryError("E_RECOVERY_PLAN_INVALID", error or plan["plan_id"])
+            return existing
+        atomic_json(path, plan)
+        return plan
+
+    def plan_recovery(self) -> dict[str, Any]:
+        plans: list[dict[str, Any]] = []
+        manual: list[dict[str, str]] = []
+        try:
+            transaction_ids = self.transactions.unfinished()
+        except TransactionError as error:
+            raise RecoveryError(error.code, error.detail) from error
+        for transaction_id in transaction_ids:
+            try:
+                plan = self.save_recovery_plan(self.build_transaction_recovery(transaction_id))
+            except TransactionError as error:
+                manual.append({"transaction_id": transaction_id, "code": error.code, "detail": error.detail})
+                continue
+            plans.append(
+                {
+                    "plan_id": plan["plan_id"],
+                    "transaction_id": transaction_id,
+                    "action": plan["action"],
+                    "impact": plan["impact"],
+                    "manual_reasons": plan["manual_reasons"],
+                }
+            )
+        if not plans and not manual:
+            return {"recovery_version": 1, "status": "nothing-to-recover", "plans": [], "manual": []}
+        status = "manual-required" if manual or any(plan["action"] != "resume-transaction" for plan in plans) else "planned"
+        return {"recovery_version": 1, "status": status, "plans": plans, "manual": manual}
+
+    def load_recovery_plan(self, plan_id: str) -> tuple[Path, dict[str, Any]]:
+        if not PLAN_ID_RE.fullmatch(plan_id):
+            raise RecoveryError("E_RECOVERY_PLAN_ID", plan_id)
+        path = self.recovery_plans / f"{plan_id}.json"
+        if path.is_symlink() or not path.is_file():
+            raise RecoveryError("E_RECOVERY_PLAN_MISSING", plan_id)
+        value, error = load_json_safe(path)
+        if error or value is None or value.get("plan_id") != plan_id:
+            raise RecoveryError("E_RECOVERY_PLAN_INVALID", error or "plan identity mismatch")
+        return path, value
+
+    def verify_pins(self, pins: Any) -> None:
+        if not isinstance(pins, dict) or not pins:
+            raise RecoveryError("E_RECOVERY_PLAN_INVALID", "pins are missing")
+        for relative, expected in sorted(pins.items()):
+            if not isinstance(relative, str) or not isinstance(expected, dict):
+                raise RecoveryError("E_RECOVERY_PLAN_INVALID", "pin is invalid")
+            try:
+                actual = self.fingerprint(self.transactions.rooted(relative))
+            except TransactionError as error:
+                raise RecoveryError(error.code, error.detail) from error
+            if actual != expected:
+                raise RecoveryError("E_RECOVERY_PLAN_STALE", relative)
+
+    def apply_recovery(self, plan_id: str) -> dict[str, Any]:
+        path, plan = self.load_recovery_plan(plan_id)
+        if plan.get("status") == "applied":
+            return {
+                "status": "already-applied",
+                "plan_id": plan_id,
+                "transaction_id": plan.get("transaction_id"),
+                "result": plan.get("result"),
+            }
+        if plan.get("status") != "planned" or plan.get("action") != "resume-transaction":
+            raise RecoveryError("E_RECOVERY_MANUAL_REQUIRED", plan_id)
+        self.verify_pins(plan.get("pins"))
+        from context_store import ContextStore
+
+        store = ContextStore(self.root)
+        try:
+            result = self.transactions.commit(
+                str(plan["transaction_id"]),
+                store.validate_workspace,
+                lambda text, slug: store.validate_state_text(text, slug, requires_delta_token=False),
+            )
+        except TransactionError as error:
+            raise RecoveryError(error.code, error.detail) from error
+        plan["status"] = "applied"
+        plan["applied_at"] = datetime.now(timezone.utc).isoformat()
+        plan["result"] = result
+        atomic_json(path, plan)
+        return {
+            "status": "applied",
+            "plan_id": plan_id,
+            "transaction_id": plan["transaction_id"],
+            "result": result,
         }

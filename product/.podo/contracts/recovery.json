@@ -1,0 +1,14 @@
+{
+  "contract_version": 1,
+  "doctor_is_read_only": true,
+  "plan_artifact_directory": ".podo-work/recovery-plans/",
+  "plan_creation_may_only_write_plan_artifacts": true,
+  "apply_requires_exact_plan_id": true,
+  "apply_requires_all_pins_to_match": true,
+  "automatic_transaction_resume": false,
+  "manual_reasons": [
+    "overlapping-state-change",
+    "target-collision",
+    "missing-or-invalid-transaction-evidence"
+  ]
+}
