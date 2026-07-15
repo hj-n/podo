@@ -123,6 +123,11 @@ VERSION="${{PODO_VERSION:-$DEFAULT_VERSION}}"
 WORKSPACE="${{1:-$HOME/podo-home}}"
 ASSET="podo-$VERSION.tar.gz"
 BASE="https://github.com/$REPOSITORY/releases/download/v$VERSION"
+SOURCE_KIND="github"
+if [ "${{PODO_TEST_RELEASES:-}}" = "1" ] && [ -n "${{PODO_RELEASE_BASE:-}}" ]; then
+  BASE="${{PODO_RELEASE_BASE%/}}"
+  SOURCE_KIND="local-release"
+fi
 TMP="$(mktemp -d "${{TMPDIR:-/tmp}}/podo-install.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
@@ -130,14 +135,13 @@ curl -fsSL "$BASE/$ASSET" -o "$TMP/$ASSET"
 curl -fsSL "$BASE/$ASSET.sha256" -o "$TMP/$ASSET.sha256"
 
 EXPECTED="$(awk -v name="$ASSET" '$2 == name {{print $1}}' "$TMP/$ASSET.sha256")"
-case "$EXPECTED" in
-  [0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;;
-  *) echo "ERROR E_CHECKSUM_FORMAT invalid checksum asset" >&2; exit 1 ;;
-esac
 if [ "${{#EXPECTED}}" -ne 64 ]; then
   echo "ERROR E_CHECKSUM_FORMAT invalid checksum length" >&2
   exit 1
 fi
+case "$EXPECTED" in
+  *[!0-9a-f]*) echo "ERROR E_CHECKSUM_FORMAT invalid checksum value" >&2; exit 1 ;;
+esac
 if command -v shasum >/dev/null 2>&1; then
   ACTUAL="$(shasum -a 256 "$TMP/$ASSET" | awk '{{print $1}}')"
 elif command -v sha256sum >/dev/null 2>&1; then
@@ -152,21 +156,37 @@ if [ "$EXPECTED" != "$ACTUAL" ]; then
 fi
 
 python3 - "$TMP/$ASSET" "$TMP/extracted" <<'PY'
-import sys, tarfile
+import os, sys, tarfile
 from pathlib import Path
 archive, destination = Path(sys.argv[1]), Path(sys.argv[2])
 destination.mkdir()
 with tarfile.open(archive, "r:gz") as bundle:
     for member in bundle.getmembers():
         path = Path(member.name)
-        if path.is_absolute() or ".." in path.parts or member.issym() or member.islnk():
+        if path.is_absolute() or ".." in path.parts or not (member.isfile() or member.isdir()):
             raise SystemExit("ERROR E_ARCHIVE_PATH unsafe archive member")
-    bundle.extractall(destination)
+        target = destination / path
+        target.resolve().relative_to(destination.resolve())
+        if member.isdir():
+            target.mkdir(parents=True, exist_ok=True)
+            target.chmod(member.mode & 0o777)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source = bundle.extractfile(member)
+            if source is None:
+                raise SystemExit("ERROR E_ARCHIVE_INVALID unreadable member")
+            with source, target.open("wb") as output:
+                while True:
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+            target.chmod(member.mode & 0o777)
 PY
 
 python3 "$TMP/extracted/podo-$VERSION/install.py" \
   --workspace "$WORKSPACE" \
-  --source-kind github \
+  --source-kind "$SOURCE_KIND" \
   --source-repository "$REPOSITORY" \
   --source-tag "v$VERSION" \
   --archive-sha256 "$ACTUAL"

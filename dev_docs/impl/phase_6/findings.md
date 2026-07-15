@@ -14,3 +14,5 @@ Phase 6 실험 결과와 배포 limitation을 기록한다.
 - Product drift, unfinished Context recovery and Workspace incompatibility are preflight blockers, not implicit overwrite or migration approval.
 - The update CLI verifies three copies of release identity: GitHub/local registry selection, external metadata/checksum and internal archive metadata.
 - Even a correctly checksummed archive cannot use absolute paths, traversal, links or special entries.
+- The generated bootstrap preserves quoted Workspace paths and does not create a Workspace before checksum success.
+- Product 0.5.0 is the first Release candidate containing the complete Phase 6 package/install/update path for Workspace 1.
