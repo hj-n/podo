@@ -12,3 +12,5 @@ Phase 6 실험 결과와 배포 limitation을 기록한다.
 - Product update and downgrade use the same three-root transaction and preserve user-owned content/mode.
 - Every handled replacement failure restores the previous product manifest and bytes before returning an error.
 - Product drift, unfinished Context recovery and Workspace incompatibility are preflight blockers, not implicit overwrite or migration approval.
+- The update CLI verifies three copies of release identity: GitHub/local registry selection, external metadata/checksum and internal archive metadata.
+- Even a correctly checksummed archive cannot use absolute paths, traversal, links or special entries.

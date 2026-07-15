@@ -17,6 +17,7 @@ sys.path.insert(0, str(PODO / "scripts"))
 
 from context_store import ContextError, ContextStore  # noqa: E402
 from recovery_store import RecoveryError, RecoveryStore  # noqa: E402
+from product_manager import ProductManagerError, update_workspace  # noqa: E402
 from transaction_store import TransactionError, TransactionManager  # noqa: E402
 
 
@@ -134,6 +135,15 @@ def command_recover(as_json: bool, plan_id: str | None) -> int:
     return 0 if result["status"] in {"planned", "nothing-to-recover", "applied", "already-applied"} else 1
 
 
+def command_update(version: str | None) -> int:
+    result = update_workspace(ROOT, version)
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    return result.returncode
+
+
 def command_context_apply(capture_id: str, request: Path) -> int:
     result = ContextStore(ROOT).apply(capture_id, request)
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -179,6 +189,8 @@ def main() -> None:
     recover = subparsers.add_parser("recover")
     recover.add_argument("--json", action="store_true")
     recover.add_argument("--apply", metavar="PLAN_ID")
+    update = subparsers.add_parser("update")
+    update.add_argument("--version")
     inbox = subparsers.add_parser("inbox")
     inbox.add_argument("--json", action="store_true")
     context = subparsers.add_parser("context")
@@ -210,6 +222,8 @@ def main() -> None:
             code = command_doctor(args.json)
         elif args.command == "recover":
             code = command_recover(args.json, args.apply)
+        elif args.command == "update":
+            code = command_update(args.version)
         elif args.command == "inbox":
             code = command_inbox(args.json)
         elif args.context_command == "apply":
@@ -220,7 +234,7 @@ def main() -> None:
             code = command_context_resolve(args.deferred, args.capture, args.decision, args.request)
         else:
             code = command_context_discard(args.capture, args.reason)
-    except (ContextError, RecoveryError) as error:
+    except (ContextError, RecoveryError, ProductManagerError) as error:
         print(f"ERROR {error.code} {error.detail}", file=sys.stderr)
         code = 1
     raise SystemExit(code)
