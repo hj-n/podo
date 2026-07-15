@@ -6,7 +6,7 @@
 
 ## Setup
 
-Pending.
+Desktop의 absent child path에 local installer를 실행했다. 첫 설치 뒤 marker를 추가하고 전체 tree의 file hash, mode, directory와 symlink 상태를 snapshot한 다음 같은 명령을 다시 실행했다.
 
 ## Expected
 
@@ -14,12 +14,14 @@ Pending.
 
 ## Result
 
-Pending.
+Pass. 첫 실행은 `INSTALLED`, 두 번째 실행은 `ALREADY_INSTALLED`를 반환했다. 두 번째 실행 전후 tree snapshot은 동일했다.
 
 ## Evidence
 
-Pending.
+- Installed product: `AGENTS.md`, `.codex/`, `.podo/`
+- Create-once data: `WORKSPACE_VERSION`, `user_config.md`, `.podo-work/`, `.podo-backups/`, `events/`, `deltas/`, `state/`
+- Installed validation: `OK mode=context-present`
 
 ## Decision
 
-Pending.
+같은 version이라는 문자열만 보지 않고 manifest와 실제 product file을 모두 확인한 경우에만 idempotent reinstall로 처리한다.

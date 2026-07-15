@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Small, self-contained command surface for an installed Podo Workspace."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+PODO = ROOT / ".podo"
+
+
+def read_version() -> str:
+    return (PODO / "VERSION").read_text(encoding="utf-8").strip()
+
+
+def command_version() -> int:
+    workspace_version = (ROOT / "WORKSPACE_VERSION").read_text(encoding="utf-8").strip()
+    print(f"Podo {read_version()} (Workspace {workspace_version})")
+    return 0
+
+
+def command_validate(mode: str) -> int:
+    validator = PODO / "scripts/validate_workspace.py"
+    result = subprocess.run(
+        [sys.executable, str(validator), str(ROOT), "--mode", mode],
+        check=False,
+    )
+    return result.returncode
+
+
+def command_hook_status() -> int:
+    hook_path = ROOT / ".codex/hooks.json"
+    entrypoint = PODO / "scripts/capture_event"
+    installed = False
+    try:
+        hook = json.loads(hook_path.read_text(encoding="utf-8"))
+        handler = hook["hooks"]["Stop"][0]["hooks"][0]
+        installed = (
+            handler.get("type") == "command"
+            and handler.get("command") == "./.podo/scripts/capture_event"
+            and entrypoint.is_file()
+        )
+    except (OSError, json.JSONDecodeError, KeyError, IndexError, TypeError):
+        pass
+
+    print(f"hook-installed: {'yes' if installed else 'no'}")
+    print("hook-trust: unverified (review in Codex; Podo does not auto-approve trust)")
+    print("capture: guard-not-ready (Phase 3 implements Event capture)")
+    return 0 if installed else 1
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="podo")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("version")
+    validate = subparsers.add_parser("validate")
+    validate.add_argument(
+        "--mode",
+        choices=("installed-empty", "context-present", "synthetic-fixture"),
+        default="context-present",
+    )
+    subparsers.add_parser("hook-status")
+    args = parser.parse_args()
+
+    if args.command == "version":
+        code = command_version()
+    elif args.command == "validate":
+        code = command_validate(args.mode)
+    else:
+        code = command_hook_status()
+    raise SystemExit(code)
+
+
+if __name__ == "__main__":
+    main()

@@ -12,9 +12,7 @@ Event → Delta → State
 
 ## Development Status
 
-Podo는 아직 개발 중이며 실제 사용자 설치용 release가 없다. 현재 저장소에는 제품 구조, 정책, 데이터 템플릿과 synthetic Workspace validator가 있다. 실제 개인 데이터나 중요한 transcript를 넣지 않는다.
-
-설치·update 명령은 Phase 2 이후 실제 artifact와 검증이 준비됐을 때 제공한다.
+Podo는 아직 개발 중이며 실제 사용자 설치용 release가 없다. 현재 저장소에는 제품 구조, 정책, 데이터 템플릿과 local 개발 설치기가 있다. 실제 개인 데이터나 중요한 transcript를 넣지 않는다.
 
 ## Product and User Data
 
@@ -37,7 +35,27 @@ Podo는 Codex turn이 끝날 때 `Stop` hook으로 session ID, turn ID와 local 
 - Raw Event에는 대화, 첨부 자료의 참조, command와 tool 결과처럼 민감할 수 있는 내용이 포함될 수 있다.
 - Capture source나 completeness를 검증하지 못하면 Delta와 State를 갱신하지 않는다.
 
-현재 `capture_event`는 입력을 검증한 뒤 명시적으로 실패하는 Phase 1 guard다. 실제 capture 기능이 아니며 설치용으로 공개하지 않는다.
+현재 `capture_event`는 입력을 검증한 뒤 명시적으로 실패하는 guard다. 실제 capture 기능이 아니므로 installer와 CLI도 capture 상태를 `guard-not-ready`로 표시한다.
+
+## Local Development Installation
+
+GitHub release가 나오기 전에는 이 저장소의 `product/`를 사용해 저장소 밖의 synthetic 또는 disposable Workspace에만 설치한다.
+
+```bash
+python3 tools/install_local.py --workspace /absolute/path/to/podo-workspace
+```
+
+Installer는 제품 파일을 설치하고 사용자 소유 파일은 없을 때만 만든다. 기존 제품 파일이 다르거나 Workspace version이 호환되지 않거나 managed path가 symlink면 쓰기 전에 중단한다. 설치 후에는 Codex에서 Workspace와 `.codex/hooks.json`을 직접 검토하고 신뢰해야 하며, installer가 이 단계를 자동 승인하지 않는다.
+
+설치된 Workspace에서는 어느 directory에서든 다음 명령을 실행할 수 있다.
+
+```bash
+/absolute/path/to/podo-workspace/.podo/bin/podo version
+/absolute/path/to/podo-workspace/.podo/bin/podo validate
+/absolute/path/to/podo-workspace/.podo/bin/podo hook-status
+```
+
+이 명령은 local development용이다. 아직 `curl` 기반 GitHub 설치나 update 명령은 제공하지 않는다.
 
 ## Development Validation
 
@@ -56,6 +74,14 @@ python3 tools/validate_workspace.py "$workspace"
 ```
 
 두 명령은 실제 개인 데이터 대신 고정된 synthetic fixture만 사용한다.
+
+Phase 2 installer의 fresh, existing, collision과 rollback을 Desktop의 marker-owned synthetic Workspace에서 검증하려면:
+
+```bash
+python3 tests/run_phase2_installation.py
+```
+
+Suite는 `/Users/hj/Desktop/podo-test-workspaces/` 아래에서 자신이 만든 marker가 있는 directory만 정리하고, parent는 비어 있을 때만 제거한다.
 
 ## Repository Map
 
