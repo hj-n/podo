@@ -109,13 +109,24 @@ class EvidenceLedger:
         )
         print(f"PASS {step_id}: {'; '.join(evidence)}")
 
+    def failed(self, step_id: str, architecture: tuple[str, ...], *evidence: str) -> None:
+        self.steps.append(
+            {
+                "id": step_id,
+                "architecture": list(architecture),
+                "outcome": "failed",
+                "evidence": list(evidence),
+            }
+        )
+        print(f"FAIL {step_id}: {'; '.join(evidence)}")
+
     def value(self) -> dict:
         return {
             "schema_version": 1,
             "phase": 8,
             "journey": self.journey,
             "run_id": self.run_id,
-            "status": "passed",
+            "status": "failed" if any(step["outcome"] == "failed" for step in self.steps) else "passed",
             "steps": self.steps,
         }
 

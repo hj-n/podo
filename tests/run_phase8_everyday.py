@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import stat
 import tempfile
 from pathlib import Path
@@ -90,8 +91,8 @@ def todo_active() -> list[str]:
     ]
 
 
-def run_journey(run_id: str) -> dict:
-    ledger = EvidenceLedger("everyday", run_id)
+def run_journey(run_id: str, ledger: EvidenceLedger | None = None) -> dict:
+    ledger = ledger or EvidenceLedger("everyday", run_id)
     with tempfile.TemporaryDirectory(prefix=f"podo-phase8-everyday-{run_id}-") as temporary:
         root = Path(temporary)
         package, metadata = build_and_extract(root)
@@ -137,6 +138,11 @@ def run_journey(run_id: str) -> dict:
             "explicit assistant name and response preferences stored",
             "permanent Context remained unchanged",
         )
+        if (
+            os.environ.get("PODO_PHASE8_TEST_FAILURES") == "1"
+            and os.environ.get("PODO_PHASE8_TEST_FAIL_AT") == "after-personalize"
+        ):
+            raise RuntimeError("controlled Phase 8 failure after personalization")
 
         first_id, first_source = capture(workspace, root, "first-context")
         first_request = request_file(
@@ -361,7 +367,18 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", default="standalone")
     args = parser.parse_args()
-    run_journey(args.run_id)
+    ledger = EvidenceLedger("everyday", args.run_id)
+    try:
+        run_journey(args.run_id, ledger)
+    except Exception as error:
+        ledger.failed(
+            "journey-failure",
+            (),
+            f"{type(error).__name__} stopped the disposable journey",
+            "temporary Workspace cleanup runs before process exit",
+        )
+        ledger.emit()
+        raise
 
 
 if __name__ == "__main__":

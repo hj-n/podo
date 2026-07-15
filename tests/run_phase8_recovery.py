@@ -106,8 +106,8 @@ def snapshot_without_plans(workspace: Path) -> dict[str, str]:
     return result
 
 
-def run_journey(run_id: str) -> dict:
-    ledger = EvidenceLedger("recovery", run_id)
+def run_journey(run_id: str, ledger: EvidenceLedger | None = None) -> dict:
+    ledger = ledger or EvidenceLedger("recovery", run_id)
     with tempfile.TemporaryDirectory(prefix=f"podo-phase8-recovery-{run_id}-") as temporary:
         root = Path(temporary)
         package, metadata = build_and_extract(root)
@@ -280,7 +280,18 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", default="standalone")
     args = parser.parse_args()
-    run_journey(args.run_id)
+    ledger = EvidenceLedger("recovery", args.run_id)
+    try:
+        run_journey(args.run_id, ledger)
+    except Exception as error:
+        ledger.failed(
+            "journey-failure",
+            (),
+            f"{type(error).__name__} stopped the disposable journey",
+            "temporary Workspace cleanup runs before process exit",
+        )
+        ledger.emit()
+        raise
 
 
 if __name__ == "__main__":

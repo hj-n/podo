@@ -120,8 +120,8 @@ def json_result(result) -> dict:
     return json.loads(result.stdout)
 
 
-def run_journey(run_id: str) -> dict:
-    ledger = EvidenceLedger("product", run_id)
+def run_journey(run_id: str, ledger: EvidenceLedger | None = None) -> dict:
+    ledger = ledger or EvidenceLedger("product", run_id)
     with tempfile.TemporaryDirectory(prefix=f"podo-phase8-product-{run_id}-") as temporary:
         base = Path(temporary)
         old_product = synthetic_product(base, "0.8.0", [1])
@@ -329,7 +329,18 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", default="standalone")
     args = parser.parse_args()
-    run_journey(args.run_id)
+    ledger = EvidenceLedger("product", args.run_id)
+    try:
+        run_journey(args.run_id, ledger)
+    except Exception as error:
+        ledger.failed(
+            "journey-failure",
+            (),
+            f"{type(error).__name__} stopped the disposable journey",
+            "temporary Workspace cleanup runs before process exit",
+        )
+        ledger.emit()
+        raise
 
 
 if __name__ == "__main__":
