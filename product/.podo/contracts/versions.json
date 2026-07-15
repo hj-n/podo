@@ -1,0 +1,12 @@
+{
+  "contract_version": 1,
+  "product_version_format": "MAJOR.MINOR.PATCH",
+  "initial_product_version": "0.1.0",
+  "workspace_version_format": "positive integer",
+  "initial_workspace_version": 1,
+  "compatible": {
+    "0.1.0": [
+      1
+    ]
+  }
+}

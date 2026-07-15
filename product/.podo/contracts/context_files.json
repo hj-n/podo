@@ -1,0 +1,58 @@
+{
+  "contract_version": 1,
+  "date_format": "YYYY-MM-DD",
+  "timestamp_format": "RFC3339 with timezone",
+  "event": {
+    "path": "events/YYYY/MM/YYYY-MM-DD_HHMMSS-<slug>/",
+    "metadata_file": "metadata.md",
+    "original_directory": "original/",
+    "required_metadata_fields": [
+      "Occurred",
+      "Captured",
+      "Source-Type",
+      "Source-Identity",
+      "Source-Entrypoint",
+      "Capture-Method",
+      "Runtime-Version",
+      "Completeness",
+      "Missing-Record-Families",
+      "SHA-256",
+      "Original-Entrypoint"
+    ],
+    "completeness_values": [
+      "complete-local-transcript",
+      "partial"
+    ],
+    "immutable_after_capture": true
+  },
+  "delta": {
+    "path": "deltas/YYYY/MM/YYYY-MM-DD_HHMMSS-<slug>.md",
+    "required_fields": [
+      "Occurred",
+      "Based-On",
+      "Affects",
+      "Confidence"
+    ],
+    "confidence_values": [
+      "confirmed",
+      "inferred",
+      "needs-confirmation"
+    ]
+  },
+  "state": {
+    "path": "state/<durable-topic>.md",
+    "required_fields": [
+      "Updated"
+    ],
+    "required_sections": [],
+    "free_form_body": true,
+    "modify_only_affected_content": true
+  },
+  "todo": {
+    "checkbox_pattern": "- [ ] or - [x]",
+    "created_required": true,
+    "due_optional": true,
+    "completed_required_when_checked": true,
+    "result_optional": true
+  }
+}
