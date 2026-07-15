@@ -12,7 +12,7 @@ Event → Delta → State
 
 ## Development Status
 
-Podo는 아직 개발 중이며 실제 사용자 설치용 release가 없다. 현재 저장소에는 제품 구조, 정책, 데이터 템플릿과 local 개발 설치기가 있다. 실제 개인 데이터나 중요한 transcript를 넣지 않는다.
+Podo는 아직 개발 중이며 실제 사용자 설치용 release가 없다. 현재 저장소에는 local 개발 설치기와 `Event → Delta → State` core loop가 있다. 실제 개인 데이터나 중요한 transcript를 넣지 않는다.
 
 ## Product and User Data
 
@@ -35,7 +35,15 @@ Podo는 Codex turn이 끝날 때 `Stop` hook으로 session ID, turn ID와 local 
 - Raw Event에는 대화, 첨부 자료의 참조, command와 tool 결과처럼 민감할 수 있는 내용이 포함될 수 있다.
 - Capture source나 completeness를 검증하지 못하면 Delta와 State를 갱신하지 않는다.
 
-현재 `capture_event`는 입력을 검증한 뒤 명시적으로 실패하는 guard다. 실제 capture 기능이 아니므로 installer와 CLI도 capture 상태를 `guard-not-ready`로 표시한다.
+현재 `capture_event`는 `codex-cli 0.144.0-alpha.4`의 local transcript를 versioned adapter로 검증해 `.podo-work/inbox/`에 임시 capture한다. Hook은 Context 의미를 판단하거나 State를 직접 수정하지 않는다.
+
+다음 Interface 작업은 이전 turn의 review view를 확인한다.
+
+- 미래 Context에 영향을 주는 명확한 변화면 immutable Event, Delta와 State로 적용한다.
+- 변화가 없으면 Event를 만들지 않고 `no-delta` receipt만 남긴다.
+- 불확실하거나 기존 결정과 충돌하면 State를 유지하고 사용자에게 확인한다.
+
+지원하지 않는 runtime, session·turn identity mismatch, 손상된 원본이나 partial capture는 Delta와 State를 갱신하지 않는다.
 
 ## Local Development Installation
 
@@ -53,6 +61,7 @@ Installer는 제품 파일을 설치하고 사용자 소유 파일은 없을 때
 /absolute/path/to/podo-workspace/.podo/bin/podo version
 /absolute/path/to/podo-workspace/.podo/bin/podo validate
 /absolute/path/to/podo-workspace/.podo/bin/podo hook-status
+/absolute/path/to/podo-workspace/.podo/bin/podo inbox --json
 ```
 
 이 명령은 local development용이다. 아직 `curl` 기반 GitHub 설치나 update 명령은 제공하지 않는다.
@@ -82,6 +91,16 @@ python3 tests/run_phase2_installation.py
 ```
 
 Suite는 `/Users/hj/Desktop/podo-test-workspaces/` 아래에서 자신이 만든 marker가 있는 directory만 정리하고, parent는 비어 있을 때만 제거한다.
+
+Phase 3 core loop 전체 검증:
+
+```bash
+python3 tests/run_phase3_capture.py
+python3 tests/run_phase3_context.py
+python3 tests/run_phase3_codex_continuity.py
+```
+
+마지막 command는 Desktop에 marker-owned Workspace와 isolated `CODEX_HOME`을 만들고 네 개의 실제 Codex 작업으로 capture, apply, No Delta와 State-first restore를 검증한 뒤 모두 정리한다.
 
 ## Repository Map
 
