@@ -101,6 +101,54 @@ class RecoveryStore:
             )
         return findings
 
+    def unfinished_product_updates(self) -> list[str]:
+        directory = self.work / "product-updates"
+        if not directory.exists():
+            return []
+        if directory.is_symlink() or not directory.is_dir():
+            return ["invalid-product-update-store"]
+        return sorted(path.name for path in directory.iterdir() if path.is_dir() and not path.name.startswith("."))
+
+    def product_update_findings(self) -> list[dict[str, Any]]:
+        findings: list[dict[str, Any]] = []
+        for update_id in self.unfinished_product_updates():
+            if update_id == "invalid-product-update-store":
+                findings.append(
+                    self.finding(
+                        "PODO_D311_PRODUCT_UPDATE_STORE_INVALID",
+                        "error",
+                        "Product update transaction store is not a regular directory.",
+                        [".podo-work/product-updates"],
+                    )
+                )
+                continue
+            relative = f".podo-work/product-updates/{update_id}"
+            journal, error = load_json_safe(self.root / relative / "journal.json")
+            if error or journal is None:
+                findings.append(
+                    self.finding(
+                        "PODO_D311_PRODUCT_UPDATE_INVALID",
+                        "error",
+                        error or "product update journal is invalid",
+                        [relative],
+                        update_id=update_id,
+                    )
+                )
+                continue
+            findings.append(
+                self.finding(
+                    "PODO_D310_PRODUCT_UPDATE_INCOMPLETE",
+                    "error",
+                    "Product update was interrupted and requires product recovery before another update.",
+                    [relative],
+                    update_id=update_id,
+                    state=journal.get("state"),
+                    from_version=journal.get("from_version"),
+                    to_version=journal.get("to_version"),
+                )
+            )
+        return findings
+
     def workspace_findings(self) -> list[dict[str, Any]]:
         validator = self.root / ".podo/scripts/validate_workspace.py"
         result = subprocess.run(
@@ -236,6 +284,7 @@ class RecoveryStore:
     def doctor(self) -> dict[str, Any]:
         findings = (
             self.transaction_findings()
+            + self.product_update_findings()
             + self.workspace_findings()
             + self.related_original_findings()
             + self.context_lifecycle_findings()

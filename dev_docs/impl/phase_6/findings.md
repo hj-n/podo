@@ -16,3 +16,5 @@ Phase 6 실험 결과와 배포 limitation을 기록한다.
 - Even a correctly checksummed archive cannot use absolute paths, traversal, links or special entries.
 - The generated bootstrap preserves quoted Workspace paths and does not create a Workspace before checksum success.
 - Product 0.5.0 is the first Release candidate containing the complete Phase 6 package/install/update path for Workspace 1.
+- Public v0.5.0 assets are anonymously downloadable and byte-identical to the tagged local candidate.
+- Interrupted product update journals now appear separately in doctor and task-startup recovery diagnosis.

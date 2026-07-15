@@ -12,7 +12,7 @@ Event → Delta → State
 
 ## Development Status
 
-Podo는 아직 개발 중이며 실제 사용자 설치용 release가 없다. 현재 저장소에는 local 개발 설치기, `Event → Delta → State` core loop, deferred confirmation·TODO lifecycle과 중단된 Context transaction의 진단·승인 기반 복구가 있다. 실제 개인 데이터나 중요한 transcript를 넣지 않는다.
+Podo는 초기 공개 개발 버전이다. GitHub Release 설치와 제품 update/rollback, `Event → Delta → State` core loop, deferred confirmation·TODO lifecycle과 중단된 Context transaction의 진단·승인 기반 복구를 제공한다. 현재 지원 transcript runtime이 제한적이므로 중요한 실제 개인 데이터에 사용하기 전 아래 privacy와 hook 범위를 확인한다.
 
 ## Product and User Data
 
@@ -46,15 +46,54 @@ Podo는 Codex turn이 끝날 때 `Stop` hook으로 session ID, turn ID와 local 
 
 지원하지 않는 runtime, session·turn identity mismatch, 손상된 원본이나 partial capture는 Delta와 State를 갱신하지 않는다.
 
-## Local Development Installation
+## Requirements
 
-GitHub release가 나오기 전에는 이 저장소의 `product/`를 사용해 저장소 밖의 synthetic 또는 disposable Workspace에만 설치한다.
+- macOS 또는 Linux
+- `curl`
+- Python 3.11 이상
+- Project hook을 지원하는 Codex
+
+현재 production-supported transcript runtime은 `codex-cli 0.144.0-alpha.4`다. 다른 runtime은 비슷하게 추측해 처리하지 않고 capture 단계에서 중단한다.
+
+## Install
+
+기본 위치인 `$HOME/podo-home`에 최신 안정 버전을 설치한다.
 
 ```bash
-python3 tools/install_local.py --workspace /absolute/path/to/podo-workspace
+curl -fsSL https://github.com/hj-n/podo/releases/latest/download/install.sh \
+  | bash -s -- "$HOME/podo-home"
 ```
 
-Installer는 제품 파일을 설치하고 사용자 소유 파일은 없을 때만 만든다. 기존 제품 파일이 다르거나 Workspace version이 호환되지 않거나 managed path가 symlink면 쓰기 전에 중단한다. 설치 후에는 Codex에서 Workspace와 `.codex/hooks.json`을 직접 검토하고 신뢰해야 하며, installer가 이 단계를 자동 승인하지 않는다.
+마지막 경로만 바꾸면 Workspace 이름과 위치는 자유롭다. Installer는 archive SHA-256을 확인한 뒤 제품 파일을 설치하고 사용자 소유 파일은 없을 때만 만든다.
+
+설치 후:
+
+1. Codex에서 설치한 Workspace를 연다.
+2. `AGENTS.md`와 `.codex/hooks.json`을 검토한다.
+3. 내용이 맞을 때만 project와 hook을 신뢰한다.
+
+Installer는 hook trust를 자동 승인하거나 우회하지 않는다. 첫 정상 capture 전까지 `hook-status`의 capture 상태는 준비 완료가 아닐 수 있다.
+
+## Update and Rollback
+
+Workspace에서 최신 안정 버전으로 update한다.
+
+```bash
+cd "$HOME/podo-home"
+./.podo/bin/podo update
+```
+
+특정 compatible version 설치나 migration 없는 rollback은 exact version을 사용한다.
+
+```bash
+./.podo/bin/podo update --version 0.5.0
+```
+
+Interface Codex에 “Podo 업데이트해줘”라고 명시적으로 요청해도 같은 절차를 사용한다. 직접 수정된 제품 파일, unfinished transaction, checksum 문제나 Workspace 비호환이 있으면 update 전에 중단한다. 성공 후에는 새 Operating Policy를 정확히 읽도록 새 Codex 작업을 시작하고 hook 변경을 다시 검토한다.
+
+일반 update는 `AGENTS.md`, `.codex/hooks.json`, `.podo/`만 교체한다. 사용자 소유 파일은 덮어쓰지 않는다. 적용 또는 최종 검증 실패 시 이전 제품 세 경로를 함께 복원한다.
+
+## Installed Commands
 
 설치된 Workspace에서는 어느 directory에서든 다음 명령을 실행할 수 있다.
 
@@ -66,11 +105,20 @@ Installer는 제품 파일을 설치하고 사용자 소유 파일은 없을 때
 /absolute/path/to/podo-workspace/.podo/bin/podo doctor --json
 /absolute/path/to/podo-workspace/.podo/bin/podo recover --json
 /absolute/path/to/podo-workspace/.podo/bin/podo recover --apply <plan-id> --json
+/absolute/path/to/podo-workspace/.podo/bin/podo update
 ```
 
 `doctor`는 파일을 바꾸지 않고 unfinished transaction, Context link·hash, capture lifecycle, product manifest와 hook health를 진단한다. `recover`는 `.podo-work/recovery-plans/`에 영향 범위와 현재 hash가 고정된 계획만 만들며, Context는 사용자가 확인한 exact plan ID를 `--apply`로 전달할 때만 변경한다. 계획 이후 관련 파일이 달라졌거나 State 변경이 겹치면 적용하지 않는다.
 
-이 명령은 local development용이다. 아직 `curl` 기반 GitHub 설치나 update 명령은 제공하지 않는다.
+## Local Development Installation
+
+Release 대신 현재 checkout의 제품을 저장소 밖 synthetic 또는 disposable Workspace에 설치할 때만 사용한다.
+
+```bash
+python3 tools/install_local.py --workspace /absolute/path/to/podo-workspace
+```
+
+이 명령은 개발용이며 공개 설치 문서의 GitHub checksum 경로를 대체하지 않는다.
 
 ## Development Validation
 

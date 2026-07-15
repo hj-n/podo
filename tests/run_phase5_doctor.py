@@ -153,18 +153,50 @@ def main() -> None:
         deferred = damaged / ".podo-work/deferred/orphan.json"
         deferred.parent.mkdir(parents=True)
         deferred.write_text(json.dumps({"capture_id": "orphan"}) + "\n", encoding="utf-8")
+        product_update = damaged / ".podo-work/product-updates/product-synthetic"
+        product_update.mkdir(parents=True)
+        (product_update / "journal.json").write_text(
+            json.dumps(
+                {
+                    "journal_version": 1,
+                    "update_id": "product-synthetic",
+                    "state": "applying",
+                    "from_version": "0.5.0",
+                    "to_version": "0.5.1",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         before = snapshot(damaged)
         result, report = doctor(damaged)
         expected = {
             "PODO_D201_DEFERRED_WITHOUT_CAPTURE",
             "PODO_D205_RECEIPT_TARGET_MISSING",
             "PODO_D303_PRODUCT_MODIFIED",
+            "PODO_D310_PRODUCT_UPDATE_INCOMPLETE",
         }
         if result.returncode == 0 or not expected.issubset(codes(report)):
             raise AssertionError(json.dumps(report, ensure_ascii=False, indent=2))
         if before != snapshot(damaged):
             raise AssertionError("doctor changed damaged evidence")
         print("PASS doctor distinguishes lifecycle, receipt target and product modification findings")
+
+        product_startup = root / "product-startup"
+        install(product_startup)
+        product_update = product_startup / ".podo-work/product-updates/product-synthetic"
+        product_update.mkdir(parents=True)
+        (product_update / "journal.json").write_text(
+            json.dumps({"update_id": "product-synthetic", "state": "applying"}) + "\n",
+            encoding="utf-8",
+        )
+        inbox = run([str(product_startup / ".podo/bin/podo"), "inbox", "--json"], cwd=product_startup)
+        if inbox.returncode or not inbox.stdout:
+            raise AssertionError(inbox.stdout + inbox.stderr)
+        inbox_value = json.loads(inbox.stdout)
+        if inbox_value["product_recovery_required"] != ["product-synthetic"] or inbox_value["recovery_diagnosis"] is None:
+            raise AssertionError(inbox.stdout + inbox.stderr)
+        print("PASS task startup surfaces unfinished product update diagnosis")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ Latest와 exact GitHub Release를 인증 유무에 맞게 조회하고 checksum 
 
 ## Status
 
-Local Release contract passed on 2026-07-15; public GitHub verification remains pending.
+Passed against local registry and public GitHub v0.5.0 on 2026-07-15.
 
 ## Evidence
 
@@ -17,6 +17,5 @@ Local Release contract passed on 2026-07-15; public GitHub verification remains 
 - Local Release directories are available only when both `PODO_TEST_RELEASES=1` and `PODO_RELEASE_DIR` are present; otherwise the production path is the fixed public `hj-n/podo` GitHub API.
 - Successful update/rollback output includes Release notes, new-task guidance and hook review guidance.
 
-## Remaining
-
-Run the same downloader without test overrides against published public GitHub Release assets.
+- Public v0.5.0 archive downloaded without authentication and matched the local candidate SHA-256 exactly.
+- The public bootstrap installed a manifest whose source kind, tag and archive hash identify the GitHub Release.
