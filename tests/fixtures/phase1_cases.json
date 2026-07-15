@@ -1,0 +1,34 @@
+[
+  {
+    "name": "missing-original",
+    "expected_code": "E_EVENT_ORIGINAL"
+  },
+  {
+    "name": "event-hash-mismatch",
+    "expected_code": "E_EVENT_HASH"
+  },
+  {
+    "name": "unknown-completeness",
+    "expected_code": "E_EVENT_COMPLETENESS"
+  },
+  {
+    "name": "broken-delta-link",
+    "expected_code": "E_DELTA_LINK"
+  },
+  {
+    "name": "todo-missing-created",
+    "expected_code": "E_TODO_CREATED"
+  },
+  {
+    "name": "checked-todo-missing-completed",
+    "expected_code": "E_TODO_COMPLETED"
+  },
+  {
+    "name": "unresolved-template-token",
+    "expected_code": "E_TEMPLATE_TOKEN"
+  },
+  {
+    "name": "incompatible-workspace-version",
+    "expected_code": "E_VERSION_COMPATIBILITY"
+  }
+]
