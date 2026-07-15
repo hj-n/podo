@@ -1,0 +1,21 @@
+{
+  "contract_version": 1,
+  "event": "Stop",
+  "required_input": [
+    "hook_event_name",
+    "session_id",
+    "turn_id",
+    "transcript_path",
+    "cwd",
+    "model"
+  ],
+  "entrypoint": ".podo/scripts/capture_event",
+  "responsibility": "Pass exact Codex source identity to the local capture entrypoint.",
+  "must_not": [
+    "infer a missing source identity",
+    "select the newest session file",
+    "write Delta or State directly",
+    "send transcript data outside the Workspace",
+    "start a daemon or background monitor"
+  ]
+}

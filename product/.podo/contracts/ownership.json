@@ -1,0 +1,26 @@
+{
+  "contract_version": 1,
+  "product_owned": [
+    "AGENTS.md",
+    ".codex/hooks.json",
+    ".podo/**"
+  ],
+  "user_owned": [
+    "WORKSPACE_VERSION",
+    ".podo-work/**",
+    ".podo-backups/**",
+    "user_config.md",
+    "events/**",
+    "deltas/**",
+    "state/**"
+  ],
+  "create_once": [
+    "WORKSPACE_VERSION",
+    ".podo-work/",
+    ".podo-backups/",
+    "user_config.md",
+    "events/",
+    "deltas/",
+    "state/"
+  ]
+}

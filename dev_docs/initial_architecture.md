@@ -91,6 +91,7 @@ podo-home/
 ├── .podo/
 │   ├── VERSION
 │   ├── policies/
+│   ├── contracts/
 │   ├── templates/
 │   ├── migrations/
 │   └── scripts/
@@ -117,6 +118,7 @@ Project hook은 사용자가 Workspace와 hook 정의를 검토하고 신뢰한 
 
 - `VERSION`: 현재 설치된 Podo 제품 버전
 - `policies/`: Context 탐색, State 갱신, TODO와 외부 자료 처리 등의 상세 정책
+- `contracts/`: 제품 소유권, hook 입력과 transcript adapter의 기계적으로 읽을 수 있는 계약
 - `templates/`: Podo가 파일을 만들 때 사용하는 기본 형식
 - `migrations/`: 사용자 데이터 형식 버전 사이를 안전하게 이전하는 도구
 - `scripts/`: 설치, 업데이트와 검증 등에 필요한 구현
@@ -370,6 +372,7 @@ Product Manager는 다음을 담당한다.
 다음은 독립 구성 요소가 아니라 Operating Policy와 Product Manager가 사용하는 보조 파일이다.
 
 - `.codex/hooks.json`: turn 종료 시 정확한 session, turn과 transcript 진입점을 capture 스크립트에 전달하는 Codex lifecycle trigger
+- `.podo/contracts/`: 제품 소유권, hook과 transcript adapter의 versioned contract
 - `.podo/templates/`: 새 Context 파일을 만들 때 사용하는 형식
 - `.podo/scripts/`: 설치, 업데이트와 검증 같은 반복 작업을 수행하는 도구
 - `.podo/migrations/`: 사용자 데이터 형식 사이를 이전하고 검증하는 도구
@@ -580,6 +583,7 @@ realpodo/
 │       ├── bin/
 │       │   └── podo
 │       ├── policies/
+│       ├── contracts/
 │       ├── templates/
 │       ├── migrations/
 │       └── scripts/
@@ -632,6 +636,7 @@ podo-home/
 │   ├── bin/
 │   │   └── podo
 │   ├── policies/
+│   ├── contracts/
 │   ├── templates/
 │   ├── migrations/
 │   └── scripts/

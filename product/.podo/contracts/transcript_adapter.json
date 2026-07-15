@@ -1,0 +1,46 @@
+{
+  "contract_version": 1,
+  "primary_source": "hook-local-transcript",
+  "observed_runtime_versions": [
+    "0.144.0-alpha.4"
+  ],
+  "production_supported_runtime_versions": [],
+  "required_input": [
+    "runtime_version",
+    "session_id",
+    "turn_id",
+    "transcript_path"
+  ],
+  "required_output": [
+    "raw_snapshot_path",
+    "sha256",
+    "source_session_id",
+    "source_turn_id",
+    "runtime_version",
+    "completeness",
+    "missing_record_families"
+  ],
+  "completeness_values": [
+    "complete-local-transcript",
+    "partial"
+  ],
+  "complete_required_record_families": [
+    "user_message",
+    "assistant_message",
+    "tool_call",
+    "tool_result"
+  ],
+  "fail_closed": [
+    "unknown_runtime_version",
+    "missing_transcript",
+    "session_identity_mismatch",
+    "turn_identity_missing",
+    "unrecognized_required_record_family"
+  ],
+  "fallback": {
+    "source": "app-server-thread-read",
+    "maximum_completeness": "partial",
+    "reason": "Phase 0 historical reads did not expose every persisted tool call and result."
+  },
+  "reasoning_records": "Preserve opaque raw records when present, but do not decrypt or require hidden reasoning for completeness."
+}

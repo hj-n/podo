@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.podo/scripts/capture_event",
+            "timeout": 30,
+            "statusMessage": "Podo is preserving the conversation source"
+          }
+        ]
+      }
+    ]
+  }
+}
