@@ -6,4 +6,12 @@
 
 ## Status
 
-Planned.
+Passed on 2026-07-15.
+
+## Evidence
+
+- `product/.podo/contracts/workspace_migrations.json`
+- `product/.podo/migrations/README.md`
+- `python3 tests/run_phase7_contracts.py`
+
+Current product 0.6.0 candidate remains compatible only with Workspace 1 and contains no numbered migration directory. The contract separates normal update, exact migration apply and separately approved full rollback.

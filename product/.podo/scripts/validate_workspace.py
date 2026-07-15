@@ -90,6 +90,7 @@ class Validator:
             ".podo/contracts/recovery.json",
             ".podo/contracts/distribution.json",
             ".podo/contracts/product_updates.json",
+            ".podo/contracts/workspace_migrations.json",
             "WORKSPACE_VERSION",
             "user_config.md",
         )

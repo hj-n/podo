@@ -1,0 +1,59 @@
+{
+  "approval": {
+    "apply_requires_exact_plan_id": true,
+    "normal_product_update_is_not_migration_approval": true,
+    "rollback_requires_separate_plan": true
+  },
+  "backup": {
+    "automatic_deletion_allowed": false,
+    "directory": ".podo-backups/<backup-id>/",
+    "manifest": "backup.json",
+    "product_directory": "product/",
+    "user_data_directory": "user-data/"
+  },
+  "contract_version": 1,
+  "descriptor": {
+    "directory_pattern": "<from>-to-<to>/",
+    "entrypoint": "migrate.py",
+    "file": "migration.json",
+    "required_fields": [
+      "migration_contract_version",
+      "from_workspace_version",
+      "to_workspace_version",
+      "description",
+      "changes",
+      "affected_paths",
+      "entrypoint"
+    ]
+  },
+  "paths": {
+    "plans": ".podo-work/migration-plans/",
+    "receipts": ".podo-work/migration-receipts/",
+    "transactions": ".podo-work/migrations/"
+  },
+  "plan": {
+    "pins_affected_path_hash_type_and_mode": true,
+    "pins_current_product_manifest": true,
+    "pins_target_release_identity": true,
+    "stale_plan_must_fail_before_backup": true
+  },
+  "transaction": {
+    "handled_failure_restores_product_and_user_data": true,
+    "product_roots": [
+      "AGENTS.md",
+      ".codex",
+      ".podo"
+    ],
+    "workspace_version_applied_last": true
+  },
+  "user_impact": {
+    "allowed_roots": [
+      "user_config.md",
+      "events",
+      "deltas",
+      "state"
+    ],
+    "declared_paths_only": true,
+    "workspace_version_is_implicit": true
+  }
+}

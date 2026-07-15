@@ -16,6 +16,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = REPO_ROOT / "tools/install_local.py"
+PRODUCT_VERSION = (REPO_ROOT / "product/.podo/VERSION").read_text(encoding="utf-8").strip()
 TEST_PARENT = Path("/Users/hj/Desktop/podo-test-workspaces")
 SUITE = "realpodo-phase2-installation"
 RUN_ID = f"{os.getpid()}-{time.time_ns()}"
@@ -119,7 +120,7 @@ def test_fresh_idempotent(workspaces: list[tuple[Path, str]]) -> None:
     cli = workspace / ".podo/bin/podo"
     assert_true(os.access(cli, os.X_OK), "installed podo CLI is not executable")
     version = command(str(cli), "version", cwd=TEST_PARENT)
-    assert_true(version.returncode == 0 and "Podo 0.5.3 (Workspace 1)" in version.stdout, version.stdout)
+    assert_true(version.returncode == 0 and f"Podo {PRODUCT_VERSION} (Workspace 1)" in version.stdout, version.stdout)
     validation = command(str(cli), "validate", cwd=TEST_PARENT)
     assert_true(validation.returncode == 0 and "mode=context-present" in validation.stdout, validation.stdout)
     synthetic = command(str(cli), "validate", "--mode", "synthetic-fixture", cwd=TEST_PARENT)

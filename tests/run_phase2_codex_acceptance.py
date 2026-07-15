@@ -15,6 +15,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = REPO_ROOT / "tools/install_local.py"
+PRODUCT_VERSION = (REPO_ROOT / "product/.podo/VERSION").read_text(encoding="utf-8").strip()
 CODEX = Path("/Applications/ChatGPT.app/Contents/Resources/codex")
 TEST_PARENT = Path("/Users/hj/Desktop/podo-test-workspaces")
 SUITE = "realpodo-phase2-codex-acceptance"
@@ -174,7 +175,7 @@ def run_acceptance(workspace: Path, codex_home: Path) -> tuple[str, str]:
         env=env,
     )
     blob = evidence_blob(codex_home, result)
-    expected = f"NAME=합성포도;DECISION={DECISION_MARKER};VERSION=0.5.3"
+    expected = f"NAME=합성포도;DECISION={DECISION_MARKER};VERSION={PRODUCT_VERSION}"
     assert_true(expected in blob, "Codex policy/State/CLI evidence missing\n" + result.stdout[-4000:] + result.stderr[-4000:])
     pending = list((workspace / ".podo-work/inbox").glob("*/capture.json"))
     assert_true(len(pending) == 1, f"expected one Stop hook capture, found {len(pending)}")
