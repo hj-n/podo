@@ -12,6 +12,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+import fcntl
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -96,6 +98,22 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+@contextmanager
+def migration_lock(root: Path):
+    path = root / ".podo-work/migration-apply.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            fail("E_MIGRATION_BUSY", "another migration or full rollback apply is running")
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
 
 
 def impact_path(raw: Any) -> str:
@@ -694,7 +712,7 @@ def apply_staged(
         fail("E_MIGRATION_APPLY", str(error))
 
 
-def apply_migration(root: Path, plan_id: str) -> dict[str, Any]:
+def _apply_migration(root: Path, plan_id: str) -> dict[str, Any]:
     plan = load_plan(root, plan_id)
     current, _workspace_version = verify_pins(root, plan)
     with tempfile.TemporaryDirectory(prefix="podo-migration-apply-", dir=root.parent) as temporary:
@@ -730,6 +748,11 @@ def apply_migration(root: Path, plan_id: str) -> dict[str, Any]:
         )
         verify_pins(root, plan)
         return apply_staged(root, stage, backup, plan, desired)
+
+
+def apply_migration(root: Path, plan_id: str) -> dict[str, Any]:
+    with migration_lock(root):
+        return _apply_migration(root, plan_id)
 
 
 def verify_source_backup(backup: Path, manifest: dict[str, Any]) -> None:
@@ -943,7 +966,7 @@ def apply_rollback_paths(
         fail("E_ROLLBACK_APPLY", str(error))
 
 
-def apply_rollback(root: Path, plan_id: str) -> dict[str, Any]:
+def _apply_rollback(root: Path, plan_id: str) -> dict[str, Any]:
     plan = load_plan(root, plan_id)
     if plan.get("kind") != "rollback":
         fail("E_ROLLBACK_PLAN", "plan is not a rollback plan")
@@ -957,6 +980,11 @@ def apply_rollback(root: Path, plan_id: str) -> dict[str, Any]:
     migration_inject("after-rollback-backup")
     verify_rollback_pins(root, plan)
     return apply_rollback_paths(root, source, safety, plan, source_manifest)
+
+
+def apply_rollback(root: Path, plan_id: str) -> dict[str, Any]:
+    with migration_lock(root):
+        return _apply_rollback(root, plan_id)
 
 
 def apply_plan(root: Path, plan_id: str) -> dict[str, Any]:

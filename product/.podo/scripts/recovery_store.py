@@ -149,6 +149,55 @@ class RecoveryStore:
             )
         return findings
 
+    def unfinished_migrations(self) -> list[str]:
+        directory = self.work / "migrations"
+        if not directory.exists():
+            return []
+        if directory.is_symlink() or not directory.is_dir():
+            return ["invalid-migration-store"]
+        return sorted(path.name for path in directory.iterdir() if path.is_dir() and not path.name.startswith("."))
+
+    def migration_findings(self) -> list[dict[str, Any]]:
+        findings: list[dict[str, Any]] = []
+        for plan_id in self.unfinished_migrations():
+            if plan_id == "invalid-migration-store":
+                findings.append(
+                    self.finding(
+                        "PODO_D321_MIGRATION_STORE_INVALID",
+                        "error",
+                        "Workspace migration transaction store is not a regular directory.",
+                        [".podo-work/migrations"],
+                    )
+                )
+                continue
+            relative = f".podo-work/migrations/{plan_id}"
+            journal, error = load_json_safe(self.root / relative / "journal.json")
+            if error or journal is None:
+                findings.append(
+                    self.finding(
+                        "PODO_D321_MIGRATION_INVALID",
+                        "error",
+                        error or "migration journal is invalid",
+                        [relative],
+                        plan_id=plan_id,
+                    )
+                )
+                continue
+            findings.append(
+                self.finding(
+                    "PODO_D320_MIGRATION_INCOMPLETE",
+                    "error",
+                    "Workspace migration or full rollback was interrupted; do not update, migrate, or delete its backup.",
+                    [relative, f".podo-backups/{journal.get('backup_id') or journal.get('safety_backup_id', 'unknown')}"],
+                    plan_id=plan_id,
+                    state=journal.get("state"),
+                    backup_id=journal.get("backup_id"),
+                    source_backup_id=journal.get("source_backup_id"),
+                    safety_backup_id=journal.get("safety_backup_id"),
+                )
+            )
+        return findings
+
     def workspace_findings(self) -> list[dict[str, Any]]:
         validator = self.root / ".podo/scripts/validate_workspace.py"
         result = subprocess.run(
@@ -285,6 +334,7 @@ class RecoveryStore:
         findings = (
             self.transaction_findings()
             + self.product_update_findings()
+            + self.migration_findings()
             + self.workspace_findings()
             + self.related_original_findings()
             + self.context_lifecycle_findings()

@@ -332,6 +332,9 @@ def current_product(target: Path) -> tuple[dict[str, Any], int]:
     product_updates = target / ".podo-work/product-updates"
     if product_updates.is_dir() and any(path.is_dir() for path in product_updates.iterdir() if not path.name.startswith(".")):
         fail("E_PRODUCT_RECOVERY_REQUIRED", "unfinished product update exists")
+    migrations = target / ".podo-work/migrations"
+    if migrations.is_dir() and any(path.is_dir() for path in migrations.iterdir() if not path.name.startswith(".")):
+        fail("E_MIGRATION_RECOVERY_REQUIRED", "unfinished Workspace migration exists")
     return manifest, workspace_version
 
 

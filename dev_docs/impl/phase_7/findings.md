@@ -18,3 +18,6 @@ Phase 7 실험 결과와 migration limitation을 기록한다.
 - Strictly increasing descriptor versions make graph traversal finite; more than one reachable chain is rejected as ambiguous.
 - Full rollback may intentionally overwrite post-migration user changes, so the plan names changed affected paths and apply retains a separate rollback-start safety backup.
 - Neither the original migration backup nor the rollback safety backup is automatically deleted after success or handled failure.
+- Normal product update remains fail-closed for incompatible Workspace versions and cannot create or apply migration approval artifacts.
+- Context, product-update and migration recovery requirements need separate startup fields because their safe recovery procedures differ.
+- A filesystem lock serializes migration/full-rollback apply in the supported macOS/Linux environment without treating a leftover lock file as an unfinished transaction.
