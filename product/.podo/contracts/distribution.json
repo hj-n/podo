@@ -1,0 +1,22 @@
+{
+  "contract_version": 1,
+  "repository": "hj-n/podo",
+  "tag_format": "v<MAJOR.MINOR.PATCH>",
+  "assets": [
+    "podo-<version>.tar.gz",
+    "podo-<version>.tar.gz.sha256",
+    "install.sh",
+    "release.json"
+  ],
+  "archive_root": "podo-<version>/",
+  "archive_required": [
+    "install.py",
+    "release.json",
+    "product/AGENTS.podo.md",
+    "product/.codex/hooks.json",
+    "product/.podo/VERSION"
+  ],
+  "checksum_algorithm": "SHA-256",
+  "links_allowed_in_archive": false,
+  "user_context_allowed_in_archive": false
+}

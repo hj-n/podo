@@ -17,7 +17,7 @@ README의 검증된 명령으로 새 User Workspace에 Podo를 설치하고, 사
 9. 적용 또는 최종 validation 실패 시 이전 제품 세 경로를 함께 복원한다.
 10. Rollback은 migration이 없고 target product가 현재 Workspace version을 지원할 때만 일반 update와 같은 절차로 수행한다.
 11. Operating Policy나 hook이 바뀔 수 있으므로 성공 후 새 Codex task와 hook 재검토를 안내한다.
-12. Repository visibility는 배포 구현과 별도 결정이다. Phase 6가 private repository를 public으로 바꾸지 않는다.
+12. Public repository의 Release asset은 인증 없이 설치할 수 있어야 한다.
 
 ## Distribution Contract
 
@@ -53,13 +53,13 @@ release 조회와 notes 확인
 
 진행 evidence는 `.podo-work/product-updates/<update-id>/`에 journal로 남긴다. 성공 시 큰 staged/backup 자료는 정리하고 작은 receipt만 남긴다. 실패 후 rollback까지 성공하면 현재 제품은 기존 manifest와 정확히 일치해야 한다.
 
-## Repository Visibility Boundary
+## Repository Visibility
 
-현재 `hj-n/podo`는 private repository다. Phase 6는 visibility를 변경하지 않는다.
+`hj-n/podo`는 2026-07-15에 사용자가 public repository로 전환했다.
 
-- Private 상태: GitHub 인증 token 또는 authenticated `gh`로 Release asset을 받는다.
-- Public 전환 이후: 같은 `install.sh`와 update downloader가 token 없이 동작한다.
-- README는 현재 실제로 작동하는 private 설치 명령과 향후 public에서 사용할 짧은 명령을 명확히 구분한다.
+- README의 기본 설치는 인증 없는 `releases/latest/download/install.sh` 경로다.
+- Update downloader도 public GitHub API와 Release asset을 token 없이 사용할 수 있어야 한다.
+- 선택적 token은 API rate limit이나 authenticated mirror에만 사용하며 기본 조건이 아니다.
 
 ## Steps
 
@@ -89,14 +89,14 @@ release 조회와 notes 확인
 
 ### 6.5 Release Downloader and CLI
 
-- public/authorized GitHub API에서 latest 또는 exact tag의 assets와 notes를 읽는다.
+- public GitHub API에서 latest 또는 exact tag의 assets와 notes를 읽는다.
 - `podo update [--version X.Y.Z]`를 제공한다.
 - 테스트 전용 local Release source는 명시적 test guard 아래에서만 연다.
 
 ### 6.6 Bootstrap Installer and README
 
 - `install.sh`가 checksum을 검증한 뒤 standalone installer를 실행하게 한다.
-- README에 prerequisites, private/public 설치, Workspace 열기, hook trust, update, rollback, doctor/recover와 소유권 경계를 간결히 기록한다.
+- README에 prerequisites, public 설치, Workspace 열기, hook trust, update, rollback, doctor/recover와 소유권 경계를 간결히 기록한다.
 
 ### 6.7 Synthetic Distribution Suite
 
@@ -107,7 +107,7 @@ release 조회와 notes 확인
 
 - version/tag/release notes와 asset을 일치시킨다.
 - GitHub에서 다시 내려받아 local build checksum과 비교한다.
-- private repository에서는 authenticated end-to-end install을 검증한다.
+- public repository에서 인증 없는 end-to-end install을 검증한다.
 
 ### 6.9 Second Version Update and Rollback
 
@@ -153,9 +153,8 @@ release 조회와 notes 확인
 
 ## Non-Goals
 
-- GitHub repository visibility 변경
+- GitHub repository visibility 관리
 - Workspace migration과 사용자 data backup restore
 - Automatic background update
 - Package signing infrastructure beyond GitHub HTTPS, release identity and published SHA-256
 - Windows native support
-

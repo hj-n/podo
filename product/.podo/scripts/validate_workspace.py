@@ -88,6 +88,7 @@ class Validator:
             ".podo/contracts/context_files.json",
             ".podo/contracts/transactions.json",
             ".podo/contracts/recovery.json",
+            ".podo/contracts/distribution.json",
             "WORKSPACE_VERSION",
             "user_config.md",
         )
