@@ -7,8 +7,12 @@
 ## Start of a Task
 
 1. `user_config.md`를 읽어 비서의 이름과 사용자가 명시한 대화 선호를 적용한다.
-2. 과거 Context가 필요하면 `.podo/policies/context_restore.md`를 읽는다.
-3. 현재 요청에 필요한 상세 정책만 추가로 읽는다.
+2. `./.podo/bin/podo inbox --json`을 실행해 이전 turn의 pending capture가 있는지 확인한다.
+3. Pending capture가 있으면 `.podo/policies/context_update.md`를 읽고 각 capture의 `review_entrypoint`만 분류한다.
+4. 과거 Context가 필요하면 `.podo/policies/context_restore.md`를 읽는다.
+5. 현재 요청에 필요한 상세 정책만 추가로 읽는다.
+
+Inbox 처리 중 명확한 변화만 `context apply`로 반영한다. 변화가 없으면 `context discard --reason no-delta`로 처리한다. 불확실하거나 기존 결정과 충돌하면 State를 바꾸지 않고 capture를 남긴 채 사용자에게 이해하기 쉽게 확인한다.
 
 ## Policy Routing
 
@@ -24,6 +28,7 @@
 - Context는 `Event → Delta → State` 순서로 반영한다.
 - Context 복원은 `State → 필요한 경우 Delta → 필요한 경우 Event` 순서로 수행한다.
 - 미래 판단에 영향을 주는 실제 변화가 없으면 파일을 수정하지 않는다: `No Delta → No Update`.
+- Inbox의 임시 capture는 Event가 아니다. 의미 있는 변화가 확인된 capture만 Event로 승격한다.
 - 명확하고 범위가 작은 변화는 반영한 뒤 알린다.
 - 의도가 불분명하거나 중요한 기존 결정과 충돌하면 먼저 차이와 영향을 설명하고 확인받는다.
 - State 전체를 다시 쓰지 않고 실제로 영향을 받은 부분만 수정한다.

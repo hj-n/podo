@@ -4,7 +4,9 @@
   "observed_runtime_versions": [
     "0.144.0-alpha.4"
   ],
-  "production_supported_runtime_versions": [],
+  "production_supported_runtime_versions": [
+    "0.144.0-alpha.4"
+  ],
   "required_input": [
     "runtime_version",
     "session_id",
@@ -26,9 +28,13 @@
   ],
   "complete_required_record_families": [
     "user_message",
-    "assistant_message",
-    "tool_call",
-    "tool_result"
+    "assistant_message"
+  ],
+  "paired_record_families": [
+    [
+      "tool_call",
+      "tool_result"
+    ]
   ],
   "fail_closed": [
     "unknown_runtime_version",

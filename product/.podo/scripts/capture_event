@@ -1,41 +1,177 @@
 #!/usr/bin/env python3
-"""Phase 1 guard for the future transcript capture entrypoint.
-
-This validates the Stop hook envelope and fails closed. Phase 3 replaces the
-guard with a versioned transcript adapter and Event capture implementation.
-"""
+"""Capture a verified Codex Stop-hook transcript into the Podo inbox."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import shutil
 import sys
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
+sys.dont_write_bytecode = True
+from transcript_adapter import AdapterError, extract_turn_jsonl, parse_transcript
 
-def fail(code: str, detail: str, exit_code: int) -> None:
-    print(f"{code}|{detail}", file=sys.stderr)
-    raise SystemExit(exit_code)
+
+ROOT = Path(__file__).resolve().parents[2]
+WORK = ROOT / ".podo-work"
+INBOX = WORK / "inbox"
+HEALTH = WORK / "capture-health.json"
+REQUIRED_HOOK_FIELDS = ("hook_event_name", "session_id", "turn_id", "transcript_path", "cwd", "model")
+
+
+class CaptureError(Exception):
+    def __init__(self, code: str, detail: str):
+        super().__init__(detail)
+        self.code = code
+        self.detail = detail
+
+
+def atomic_json(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def health(status: str, *, code: str | None = None, detail: str | None = None, capture_id: str | None = None) -> None:
+    value = {
+        "status": status,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if code:
+        value["code"] = code
+    if detail:
+        value["detail"] = detail
+    if capture_id:
+        value["capture_id"] = capture_id
+    atomic_json(HEALTH, value)
+
+
+def sha256(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def validate_workspace_cwd(value: str) -> None:
+    try:
+        Path(value).resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        raise CaptureError("PODO_CAPTURE_CWD_MISMATCH", "hook cwd is outside the installed Workspace")
+
+
+def capture(payload: dict) -> tuple[str, str]:
+    missing = [field for field in REQUIRED_HOOK_FIELDS if not payload.get(field)]
+    if missing:
+        raise CaptureError("PODO_CAPTURE_INVALID_HOOK_INPUT", "missing=" + ",".join(missing))
+    if payload.get("hook_event_name") != "Stop":
+        raise CaptureError("PODO_CAPTURE_INVALID_HOOK_INPUT", "expected Stop hook")
+    validate_workspace_cwd(str(payload["cwd"]))
+    source = Path(str(payload["transcript_path"]))
+    if source.is_symlink() or not source.is_file():
+        raise CaptureError("PODO_CAPTURE_SOURCE_UNREADABLE", "transcript must be an existing regular file")
+    try:
+        raw = source.read_bytes()
+    except OSError as error:
+        raise CaptureError("PODO_CAPTURE_SOURCE_UNREADABLE", str(error)) from error
+    try:
+        info = parse_transcript(raw, str(payload["session_id"]), str(payload["turn_id"]))
+        turn_raw = extract_turn_jsonl(raw, str(payload["turn_id"]))
+    except AdapterError as error:
+        raise CaptureError(error.code, error.detail) from error
+
+    capture_id = f"{info.session_id}--{info.turn_id}"
+    INBOX.mkdir(parents=True, exist_ok=True)
+    destination = INBOX / capture_id
+    if destination.exists():
+        metadata_path = destination / "capture.json"
+        original_path = destination / "original/session.jsonl"
+        try:
+            current = json.loads(metadata_path.read_text(encoding="utf-8"))
+            current_hash = sha256(original_path.read_bytes())
+        except (OSError, json.JSONDecodeError) as error:
+            raise CaptureError("PODO_CAPTURE_EXISTING_CORRUPT", str(error)) from error
+        if current.get("capture_id") != capture_id or current.get("sha256") != current_hash:
+            raise CaptureError("PODO_CAPTURE_EXISTING_CORRUPT", capture_id)
+        health("ready", capture_id=capture_id)
+        return "already-captured", capture_id
+
+    captured_at = datetime.now(timezone.utc).isoformat()
+    metadata = {
+        "capture_version": 1,
+        "capture_id": capture_id,
+        "status": "pending",
+        "source": {
+            "type": "codex-local-transcript",
+            "session_id": info.session_id,
+            "turn_id": info.turn_id,
+            "transcript_path": str(source.resolve()),
+            "cwd": str(Path(str(payload["cwd"])).resolve()),
+            "model": str(payload["model"]),
+        },
+        "runtime_version": info.runtime_version,
+        "occurred": info.occurred,
+        "captured": captured_at,
+        "completeness": info.completeness,
+        "missing_record_families": list(info.missing_record_families),
+        "observed_record_families": list(info.observed_record_families),
+        "observed_record_types": list(info.observed_record_types),
+        "sha256": sha256(raw),
+        "original_entrypoint": "original/session.jsonl",
+        "review_entrypoint": "turn.jsonl",
+        "user_preview": info.user_preview,
+    }
+    temporary = Path(tempfile.mkdtemp(prefix=".capture-", dir=INBOX))
+    try:
+        original_dir = temporary / "original"
+        original_dir.mkdir()
+        (original_dir / "session.jsonl").write_bytes(raw)
+        (temporary / "turn.jsonl").write_bytes(turn_raw)
+        (temporary / "capture.json").write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, destination)
+    except Exception:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+    health("ready", capture_id=capture_id)
+    return "captured", capture_id
 
 
 def main() -> None:
     try:
         payload = json.load(sys.stdin)
+        if not isinstance(payload, dict):
+            raise CaptureError("PODO_CAPTURE_INVALID_HOOK_INPUT", "hook input must be a JSON object")
+        outcome, capture_id = capture(payload)
     except json.JSONDecodeError as error:
-        fail("PODO_CAPTURE_INVALID_HOOK_INPUT", str(error), 65)
-
-    contract_path = Path(__file__).resolve().parents[1] / "contracts/hook_stop.json"
-    contract = json.loads(contract_path.read_text(encoding="utf-8"))
-    missing = [field for field in contract["required_input"] if not payload.get(field)]
-    if missing:
-        fail("PODO_CAPTURE_INVALID_HOOK_INPUT", "missing=" + ",".join(missing), 65)
-    if payload.get("hook_event_name") != contract["event"]:
-        fail("PODO_CAPTURE_INVALID_HOOK_INPUT", "expected Stop hook", 65)
-
-    fail(
-        "PODO_CAPTURE_NOT_IMPLEMENTED",
-        "Phase 1 defines the contract; Phase 3 implements versioned capture",
-        78,
-    )
+        failure = CaptureError("PODO_CAPTURE_INVALID_HOOK_INPUT", str(error))
+        health("error", code=failure.code, detail=failure.detail)
+        print(f"{failure.code}|{failure.detail}", file=sys.stderr)
+        raise SystemExit(65)
+    except CaptureError as error:
+        health("error", code=error.code, detail=error.detail)
+        print(f"{error.code}|{error.detail}", file=sys.stderr)
+        raise SystemExit(1)
+    except OSError as error:
+        health("error", code="PODO_CAPTURE_IO_ERROR", detail=str(error))
+        print(f"PODO_CAPTURE_IO_ERROR|{error}", file=sys.stderr)
+        raise SystemExit(1)
+    print(json.dumps({"continue": True, "systemMessage": f"Podo {outcome}: {capture_id}"}))
 
 
 if __name__ == "__main__":

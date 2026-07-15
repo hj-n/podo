@@ -10,8 +10,12 @@ import sys
 from pathlib import Path
 
 
+sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 PODO = ROOT / ".podo"
+sys.path.insert(0, str(PODO / "scripts"))
+
+from context_store import ContextError, ContextStore  # noqa: E402
 
 
 def read_version() -> str:
@@ -48,10 +52,45 @@ def command_hook_status() -> int:
     except (OSError, json.JSONDecodeError, KeyError, IndexError, TypeError):
         pass
 
+    health_path = ROOT / ".podo-work/capture-health.json"
+    capture_status = "not-diagnosed"
+    if health_path.is_file():
+        try:
+            health = json.loads(health_path.read_text(encoding="utf-8"))
+            if health.get("status") == "ready":
+                capture_status = f"ready ({health.get('capture_id', 'verified capture')})"
+            elif health.get("status") == "error":
+                capture_status = f"error ({health.get('code', 'unknown')})"
+        except (OSError, json.JSONDecodeError):
+            capture_status = "error (invalid health receipt)"
     print(f"hook-installed: {'yes' if installed else 'no'}")
     print("hook-trust: unverified (review in Codex; Podo does not auto-approve trust)")
-    print("capture: guard-not-ready (Phase 3 implements Event capture)")
+    print(f"capture: {capture_status}")
     return 0 if installed else 1
+
+
+def command_inbox(as_json: bool) -> int:
+    values = ContextStore(ROOT).list_inbox()
+    if as_json:
+        print(json.dumps({"pending": values}, ensure_ascii=False, indent=2))
+    elif not values:
+        print("Inbox is empty.")
+    else:
+        for value in values:
+            print(f"{value['capture_id']} | {value['completeness']} | {value['user_preview']}")
+    return 0
+
+
+def command_context_apply(capture_id: str, request: Path) -> int:
+    result = ContextStore(ROOT).apply(capture_id, request)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def command_context_discard(capture_id: str, reason: str) -> int:
+    result = ContextStore(ROOT).discard(capture_id, reason)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
 
 
 def main() -> None:
@@ -65,14 +104,34 @@ def main() -> None:
         default="context-present",
     )
     subparsers.add_parser("hook-status")
+    inbox = subparsers.add_parser("inbox")
+    inbox.add_argument("--json", action="store_true")
+    context = subparsers.add_parser("context")
+    context_commands = context.add_subparsers(dest="context_command", required=True)
+    apply = context_commands.add_parser("apply")
+    apply.add_argument("--capture", required=True)
+    apply.add_argument("--request", required=True, type=Path)
+    discard = context_commands.add_parser("discard")
+    discard.add_argument("--capture", required=True)
+    discard.add_argument("--reason", required=True, choices=("no-delta",))
     args = parser.parse_args()
 
-    if args.command == "version":
-        code = command_version()
-    elif args.command == "validate":
-        code = command_validate(args.mode)
-    else:
-        code = command_hook_status()
+    try:
+        if args.command == "version":
+            code = command_version()
+        elif args.command == "validate":
+            code = command_validate(args.mode)
+        elif args.command == "hook-status":
+            code = command_hook_status()
+        elif args.command == "inbox":
+            code = command_inbox(args.json)
+        elif args.context_command == "apply":
+            code = command_context_apply(args.capture, args.request)
+        else:
+            code = command_context_discard(args.capture, args.reason)
+    except ContextError as error:
+        print(f"ERROR {error.code} {error.detail}", file=sys.stderr)
+        code = 1
     raise SystemExit(code)
 
 

@@ -119,7 +119,7 @@ def test_fresh_idempotent(workspaces: list[tuple[Path, str]]) -> None:
     cli = workspace / ".podo/bin/podo"
     assert_true(os.access(cli, os.X_OK), "installed podo CLI is not executable")
     version = command(str(cli), "version", cwd=TEST_PARENT)
-    assert_true(version.returncode == 0 and "Podo 0.1.0 (Workspace 1)" in version.stdout, version.stdout)
+    assert_true(version.returncode == 0 and "Podo 0.2.0 (Workspace 1)" in version.stdout, version.stdout)
     validation = command(str(cli), "validate", cwd=TEST_PARENT)
     assert_true(validation.returncode == 0 and "mode=context-present" in validation.stdout, validation.stdout)
     synthetic = command(str(cli), "validate", "--mode", "synthetic-fixture", cwd=TEST_PARENT)
@@ -128,7 +128,7 @@ def test_fresh_idempotent(workspaces: list[tuple[Path, str]]) -> None:
     assert_true(hook.returncode == 0, hook.stdout)
     assert_true("hook-installed: yes" in hook.stdout, hook.stdout)
     assert_true("hook-trust: unverified" in hook.stdout, hook.stdout)
-    assert_true("capture: guard-not-ready" in hook.stdout, hook.stdout)
+    assert_true("capture: not-diagnosed" in hook.stdout, hook.stdout)
 
     before = tree_snapshot(workspace)
     second = install(workspace)

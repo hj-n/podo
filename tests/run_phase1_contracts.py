@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 BUILD = REPO_ROOT / "tools/build_synthetic_workspace.py"
 VALIDATE = REPO_ROOT / "tools/validate_workspace.py"
 CASES = REPO_ROOT / "tests/fixtures/phase1_cases.json"
+TRANSCRIPT = REPO_ROOT / "tests/fixtures/codex_transcript_0.144.0-alpha.4.jsonl"
 
 EVENT_DIR = "events/2026/07/2026-07-15_090000-synthetic-planning"
 DELTA = "deltas/2026/07/2026-07-15_091500-synthetic-planning.md"
@@ -87,12 +88,15 @@ def main() -> None:
         if digest_tree(first) != digest_tree(second):
             raise AssertionError("two synthetic Workspace builds are not deterministic")
 
-        before_guard = digest_tree(first)
+        before_context = {
+            name: digest_tree(first / name)
+            for name in ("events", "deltas", "state")
+        }
         hook_payload = {
             "hook_event_name": "Stop",
-            "session_id": "synthetic-session",
-            "turn_id": "synthetic-turn",
-            "transcript_path": "/tmp/synthetic-transcript.jsonl",
+            "session_id": "synthetic-session-001",
+            "turn_id": "synthetic-turn-001",
+            "transcript_path": str(TRANSCRIPT),
             "cwd": str(first),
             "model": "synthetic-model",
         }
@@ -102,11 +106,15 @@ def main() -> None:
             text=True,
             capture_output=True,
         )
-        if guard.returncode != 78 or "PODO_CAPTURE_NOT_IMPLEMENTED" not in guard.stderr:
-            raise AssertionError(f"capture guard did not fail closed\n{guard.stdout}{guard.stderr}")
-        if digest_tree(first) != before_guard:
-            raise AssertionError("capture guard modified the synthetic Workspace")
-        print("PASS capture-guard -> PODO_CAPTURE_NOT_IMPLEMENTED (78)")
+        if guard.returncode != 0 or "captured" not in guard.stdout:
+            raise AssertionError(f"capture entrypoint failed\n{guard.stdout}{guard.stderr}")
+        after_context = {
+            name: digest_tree(first / name)
+            for name in ("events", "deltas", "state")
+        }
+        if after_context != before_context:
+            raise AssertionError("inbox capture modified permanent Context")
+        print("PASS inbox-capture leaves permanent Context unchanged")
 
         for case in cases:
             damaged = base / case["name"]

@@ -104,15 +104,6 @@ Updated: 2026-07-15
 """,
         encoding="utf-8",
     )
-    hook_path = workspace / ".codex/hooks.json"
-    hook = json.loads(hook_path.read_text(encoding="utf-8"))
-    handler = hook["hooks"]["Stop"][0]["hooks"][0]
-    assert_true(
-        handler["command"] == "./.podo/scripts/capture_event",
-        "installed Stop hook command did not match the reviewed product",
-    )
-    handler["command"] = "./.podo/scripts/capture_event 2>.podo-work/phase2-stop.stderr"
-    hook_path.write_text(json.dumps(hook, indent=2) + "\n", encoding="utf-8")
 
 
 def context_hashes(workspace: Path) -> dict[str, str]:
@@ -183,13 +174,13 @@ def run_acceptance(workspace: Path, codex_home: Path) -> tuple[str, str]:
         env=env,
     )
     blob = evidence_blob(codex_home, result)
-    expected = f"NAME=합성포도;DECISION={DECISION_MARKER};VERSION=0.1.0"
+    expected = f"NAME=합성포도;DECISION={DECISION_MARKER};VERSION=0.2.0"
     assert_true(expected in blob, "Codex policy/State/CLI evidence missing\n" + result.stdout[-4000:] + result.stderr[-4000:])
-    hook_receipt = workspace / ".podo-work/phase2-stop.stderr"
-    assert_true(hook_receipt.is_file(), "instrumented Stop hook receipt is missing")
-    hook_output = hook_receipt.read_text(encoding="utf-8")
-    assert_true("PODO_CAPTURE_NOT_IMPLEMENTED" in hook_output, "Stop hook guard output is unexpected: " + hook_output)
-    return expected, "PODO_CAPTURE_NOT_IMPLEMENTED"
+    pending = list((workspace / ".podo-work/inbox").glob("*/capture.json"))
+    assert_true(len(pending) == 1, f"expected one Stop hook capture, found {len(pending)}")
+    health = json.loads((workspace / ".podo-work/capture-health.json").read_text(encoding="utf-8"))
+    assert_true(health.get("status") == "ready", f"capture health is not ready: {health}")
+    return expected, "capture-ready"
 
 
 def safe_cleanup(child: Path, role: str) -> None:
@@ -224,7 +215,7 @@ def main() -> None:
         after = context_hashes(workspace)
         assert_true(after == before, "Codex task or failed guard changed user Context")
         print(f"PASS Codex answer {answer}")
-        print(f"PASS Stop hook guard {hook}")
+        print(f"PASS Stop hook {hook}")
         print("PASS Context hashes unchanged")
     except (AcceptanceFailure, subprocess.TimeoutExpired) as error:
         print(f"FAIL {error}", file=sys.stderr)
