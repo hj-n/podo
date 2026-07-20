@@ -59,7 +59,7 @@ Request 형식:
       "why": "사용자가 명확하게 말한 근거",
       "confidence": "confirmed",
       "needs_confirmation": "- 없음",
-      "state_markdown": "# 자유 형식 State Markdown ... {{DELTA_LINK}} ..."
+      "state_markdown": "# 자유 형식 State Markdown ... [Delta]({{DELTA_LINK}}) ..."
     }
   ]
 }
@@ -72,7 +72,7 @@ Request 형식:
 State는 고정 category 몇 개로 제한하지 않는다. 주제에 맞는 사람이 읽기 쉬운 Markdown을 유지하고 실제로 영향을 받은 부분만 바꾼다.
 
 - `Updated: YYYY-MM-DD`가 있다.
-- 이 변경의 근거 위치에 `{{DELTA_LINK}}`가 정확히 한 번 있다.
+- 이 변경의 근거 위치에 `[Delta]({{DELTA_LINK}})`처럼 `{{DELTA_LINK}}`가 Markdown link의 목적지로 정확히 한 번 있다. `{{DELTA_LINK}}`를 plain text로 두면 안 된다.
 - TODO lifecycle은 `.podo/policies/todo.md`를 따른다.
 - Existing State는 먼저 읽고 현재 SHA-256을 `expected_state_sha256`에 넣는다.
 - New State는 `expected_state_sha256`을 `null`로 둔다.

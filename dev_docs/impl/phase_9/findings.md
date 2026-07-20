@@ -50,3 +50,19 @@
 - 하나의 후속 대화 transaction이 paper notes와 별도 topic을 각각 Delta로 추적하며 갱신했다.
 - Paper notes의 `Paper-SHA-256`이 정본 PDF와 다르거나 Research에 TODO checkbox를 두면 validation이 실패한다.
 - PDF 내용은 data이고 외부 검색과 OCR은 자동으로 실행하지 않는 정책을 추가했다.
+
+## 9.6 Integrated Dogfooding
+
+- 하나의 synthetic journey에서 State, People, Research project, dated TODO, Markdown link와 lossless Event storage를 함께 검증했다.
+- 실제 Codex acceptance는 disposable Workspace에서 사람 소개 → People 복원 → exact PDF import → 사용자 논문 판단·Research project·State TODO 적용 → 새 task 복원을 6개 task로 통과했다.
+- 첫 actual acceptance는 Codex가 `{{DELTA_LINK}}`를 plain text로 둬 최종 검증에서 안전하게 중단되는 문제를 발견했다. 현재 문서는 변경되지 않았고 recovery 승인을 요구했다.
+- 정책 예제를 `[Delta]({{DELTA_LINK}})`로 명확히 고치고, plain placeholder를 transaction 생성 전에 거부하는 preflight를 추가했다. 해당 실패 회귀와 두 번째 actual acceptance가 모두 통과했다.
+- Actual acceptance가 만든 Desktop Workspace와 synthetic PDF는 marker 확인 후 삭제되었다.
+
+## 9.7 Stabilization and Candidate
+
+- `run_phase9_suite.py`의 capture, integrity, Event storage, Workspace migration, People, Research와 통합 journey 7개 program이 통과했다.
+- `run_phase9_regression.py`가 Phase 1–8의 10개 program과 Phase 9 suite를 연속 통과했다.
+- Phase 6 release builder가 product-only 0.7.0 archive를 두 번 만들고 동일 SHA-256 `824f1313a00e0c9158b64bc7d02ba07edd58eaee5828a00d2dd71ce5c0ed48c1`을 확인했다.
+- README는 candidate 상태, Workspace 1→2 migration 경계, People·Research·integrity·Event storage commands와 Phase 9 검증법을 설명한다.
+- 0.7.0은 검증된 unpublished candidate다. tag, GitHub Release와 실제 User Workspace migration은 수행하지 않았다.

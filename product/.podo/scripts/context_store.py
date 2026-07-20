@@ -25,6 +25,7 @@ FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*(.+)$", re.MULTILINE)
 TODO_RE = re.compile(r"^- \[([ xX])\]\s+(.+)$")
 TODO_FIELD_RE = re.compile(r"^\s+- (Created|Due|Completed|Cancelled|Reopened|Result):\s*(.+)$")
 TOKEN_RE = re.compile(r"\{\{[A-Z][A-Z0-9_]*\}\}")
+DELTA_MARKDOWN_LINK_RE = re.compile(r"\[[^\]\n]+\]\(\{\{DELTA_LINK\}\}\)")
 CONFIDENCE_VALUES = {"confirmed", "inferred", "needs-confirmation"}
 
 
@@ -301,6 +302,11 @@ class ContextStore:
     def validate_state_text(self, text: str, state_slug: str, *, requires_delta_token: bool = True) -> None:
         if requires_delta_token and text.count("{{DELTA_LINK}}") != 1:
             fail("E_REQUEST_STATE_LINK", f"{state_slug} must contain exactly one {{{{DELTA_LINK}}}} token")
+        if requires_delta_token and not DELTA_MARKDOWN_LINK_RE.search(text):
+            fail(
+                "E_REQUEST_STATE_LINK",
+                f"{state_slug} must put {{{{DELTA_LINK}}}} inside a Markdown link such as [Delta]({{{{DELTA_LINK}}}})",
+            )
         allowed = "{{DELTA_LINK}}" if requires_delta_token else None
         other_tokens = [token for token in TOKEN_RE.findall(text) if token != allowed]
         if other_tokens:

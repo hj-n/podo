@@ -50,7 +50,9 @@ def main() -> None:
         checksum = (first / metadata["checksum_asset"]).read_text(encoding="utf-8").strip()
         if checksum != f"{sha256(archive)}  {archive.name}" or metadata["archive_sha256"] != sha256(archive):
             raise AssertionError("release checksum identity mismatch")
-        if metadata["tag"] != f"v{metadata['product_version']}" or metadata["workspace_versions"] != [1]:
+        version_contract = json.loads((ROOT / "product/.podo/contracts/versions.json").read_text(encoding="utf-8"))
+        expected_workspaces = version_contract["compatible"][metadata["product_version"]]
+        if metadata["tag"] != f"v{metadata['product_version']}" or metadata["workspace_versions"] != expected_workspaces:
             raise AssertionError(str(metadata))
 
         with tarfile.open(archive, "r:gz") as bundle:

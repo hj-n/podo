@@ -1,11 +1,11 @@
 # Implementation Status
 
 - Active phase: 9 — Dogfooding and Stabilization
-- Status: In Progress
-- Current step: 9.6 — Integrated dogfooding and recovery
-- Last verified: Phase 9.5 canonical PDF import, Event/Delta trace, SHA duplicate detection, paper/topic discussion transaction, injected failure cleanup, encrypted-PDF refusal and Phase 1/3 regressions passed (2026-07-20)
+- Status: Complete — unpublished 0.7.0 candidate
+- Current step: 9.7 — Complete
+- Last verified: Phase 1–9 synthetic regression, real Codex 6-task People·Research continuity acceptance, disposable Desktop cleanup and deterministic 0.7.0 candidate passed (2026-07-20)
 - Blockers: None
-- Next action: Run integrated Phase 9 journeys, full regression, migration rollback and reproducible unpublished candidate checks.
+- Next action: Public Release or an actual User Workspace update/migration only after a separate explicit user request.
 - Updated: 2026-07-20
 
 실제 구현이나 검증이 진행되었을 때만 이 문서를 갱신한다. Exit criteria를 검증하기 전에는 Phase 또는 Step을 완료로 표시하지 않는다.

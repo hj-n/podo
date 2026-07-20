@@ -388,7 +388,7 @@ def main() -> None:
     else:
         print(f"INSTALLED {target}")
     print("NEXT Review this Workspace and its .codex/hooks.json in Codex before trusting project hooks.")
-    print("CAPTURE guard-not-ready; Phase 3 implements Event capture.")
+    print("CAPTURE not-diagnosed; review and trust the hook, then complete one Codex turn to verify capture.")
 
 
 if __name__ == "__main__":

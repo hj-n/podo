@@ -232,6 +232,19 @@ def main() -> None:
         missing_link_request = request_file(workspace, "missing-link", request([bad_link]))
         expect_failure(workspace, missing_link_id, missing_link_request, "E_REQUEST_STATE_LINK")
 
+        session, turn = "context-session-008", "context-turn-008"
+        plain_link_id = capture(workspace, transcript(root, session, turn), session, turn)
+        plain_link = update("plain-link", "placeholder가 plain text다.")
+        plain_link["state_markdown"] = plain_link["state_markdown"].replace(
+            "[Relevant Delta]({{DELTA_LINK}})",
+            "{{DELTA_LINK}}",
+        )
+        plain_link_request = request_file(workspace, "plain-link", request([plain_link]))
+        expect_failure(workspace, plain_link_id, plain_link_request, "E_REQUEST_STATE_LINK")
+        unfinished = list((workspace / ".podo-work/transactions").glob("context-*"))
+        if unfinished:
+            raise AssertionError(f"plain Delta token created a transaction: {unfinished}")
+
         if not state_path.is_file():
             raise AssertionError("existing State disappeared during failure cases")
         print("PASS Phase 3 context suite")

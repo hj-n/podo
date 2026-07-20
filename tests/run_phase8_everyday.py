@@ -16,6 +16,11 @@ from phase8_support import EvidenceLedger, capture, cli, context_snapshot, reque
 from run_phase6_package_install import build_and_extract, install
 
 
+ROOT = Path(__file__).resolve().parents[1]
+PRODUCT_VERSION = (ROOT / "product/.podo/VERSION").read_text(encoding="utf-8").strip()
+WORKSPACE_VERSION = (ROOT / "product/.podo/templates/workspace/WORKSPACE_VERSION").read_text(encoding="utf-8").strip()
+
+
 DECISION_09 = "ORCHARD_REVIEW_AT_09"
 DECISION_10 = "ORCHARD_REVIEW_AT_10"
 TODO_PREPARE = "PREPARE_ORCHARD_PACKET"
@@ -101,13 +106,13 @@ def run_journey(run_id: str, ledger: EvidenceLedger | None = None) -> dict:
         if installed.returncode or "INSTALLED" not in installed.stdout:
             raise AssertionError(installed.stdout + installed.stderr)
         version = cli(workspace, "version")
-        if version.returncode or "Podo 0.6.0 (Workspace 1)" not in version.stdout:
+        if version.returncode or f"Podo {PRODUCT_VERSION} (Workspace {WORKSPACE_VERSION})" not in version.stdout:
             raise AssertionError(version.stdout + version.stderr)
         ledger.passed(
             "install",
             ("3", "8"),
             "release package installed into an empty Workspace",
-            "product 0.6.0 and Workspace 1 verified",
+            f"product {PRODUCT_VERSION} and Workspace {WORKSPACE_VERSION} verified",
         )
 
         product_before = context_snapshot(workspace)
