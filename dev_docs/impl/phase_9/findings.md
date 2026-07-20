@@ -20,3 +20,12 @@
 - `podo duplicates`와 doctor는 서로 다른 현재 문서의 정확히 같은 문장을 warning 후보로 보고한다.
 - 일반 텍스트 추적 경로는 `E_PLAIN_REFERENCE`로 진단하고 기존 Markdown link는 오탐하지 않는다.
 - Phase 4 TODO lifecycle과 Phase 1 contract regression이 새 view와 진단 뒤에도 통과했다.
+
+## 9.3 Lossless Event Storage
+
+- Legacy original은 256 KiB content-addressed chunks와 ordered manifest로 전환할 수 있다.
+- `event-storage plan`은 source hash를 고정하고 event 수, source bytes, unique chunk bytes와 예상 절감을 먼저 보여준다.
+- Exact plan apply 전에 모든 pin을 재검증하고 legacy metadata와 original을 `.podo-backups/`에 보존한다.
+- Manifest materialization은 원본과 byte-for-byte 및 SHA-256이 동일했다.
+- Rollback은 별도 plan과 pinned current manifest를 요구하고 legacy Event를 복원했다.
+- 전환 도중 주입한 실패는 metadata와 original을 기존 bytes로 되돌렸다.

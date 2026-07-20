@@ -185,6 +185,8 @@ class Validator:
                 self.add("E_USER_CONFIG", path, f"{label} must contain an explicit value")
 
     def validate_events(self, context_contract: dict) -> None:
+        from event_storage import EventStorage, EventStorageError
+
         allowed = set(context_contract.get("event", {}).get("completeness_values", []))
         required = context_contract.get("event", {}).get("required_metadata_fields", [])
         for metadata in sorted((self.root / "events").glob("*/*/*/metadata.md")):
@@ -223,14 +225,20 @@ class Validator:
             original = self.safe_target(metadata, original_value, "E_EVENT_ORIGINAL")
             if original is None or not original.is_file():
                 continue
-            digest = hashlib.sha256(original.read_bytes()).hexdigest()
+            try:
+                raw = EventStorage(self.root).materialize_manifest(original) if original.name == "manifest.json" else original.read_bytes()
+            except EventStorageError as error:
+                self.add(error.code, metadata, error.detail)
+                continue
+            digest = hashlib.sha256(raw).hexdigest()
             if fields.get("SHA-256") != digest:
                 self.add("E_EVENT_HASH", metadata, "SHA-256 does not match original bytes")
-            original_dir = (metadata.parent / "original").resolve()
-            try:
-                original.relative_to(original_dir)
-            except ValueError:
-                self.add("E_EVENT_ORIGINAL", metadata, "original entrypoint must stay inside Event original/")
+            if original.name != "original.pdf" or "research/papers" not in original.as_posix():
+                original_dir = (metadata.parent / "original").resolve()
+                try:
+                    original.relative_to(original_dir)
+                except ValueError:
+                    self.add("E_EVENT_ORIGINAL", metadata, "original entrypoint must stay inside Event original/ or be a Research PDF")
         if self.mode == "synthetic-fixture" and not list((self.root / "events").glob("*/*/*/metadata.md")):
             self.add("E_EVENT_MISSING", "events", "at least one synthetic Event is required")
 
