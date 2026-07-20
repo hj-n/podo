@@ -330,6 +330,22 @@ class RecoveryStore:
             findings.append(self.finding("PODO_D403_CAPTURE_UNHEALTHY", "error", error or str(health.get("code") or "capture health is not ready"), [".podo-work/capture-health.json"]))
         return findings
 
+    def duplicate_context_findings(self) -> list[dict[str, Any]]:
+        from knowledge_views import KnowledgeViews
+
+        findings: list[dict[str, Any]] = []
+        for duplicate in KnowledgeViews(self.root).duplicate_lines():
+            paths = [f"{value['path']}:{value['line']}" for value in duplicate["locations"]]
+            findings.append(
+                self.finding(
+                    "PODO_D120_CONTEXT_DUPLICATE",
+                    "warning",
+                    f"Exact current Context appears in multiple documents: {duplicate['text'][:120]}",
+                    paths,
+                )
+            )
+        return findings
+
     def doctor(self) -> dict[str, Any]:
         findings = (
             self.transaction_findings()
@@ -340,6 +356,7 @@ class RecoveryStore:
             + self.context_lifecycle_findings()
             + self.product_findings()
             + self.hook_findings()
+            + self.duplicate_context_findings()
         )
         findings.sort(key=lambda item: (item["severity"], item["code"], item["paths"]))
         status = "healthy"

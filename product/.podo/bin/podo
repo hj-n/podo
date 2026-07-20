@@ -16,6 +16,7 @@ PODO = ROOT / ".podo"
 sys.path.insert(0, str(PODO / "scripts"))
 
 from context_store import ContextError, ContextStore  # noqa: E402
+from knowledge_views import KnowledgeViews, ViewError  # noqa: E402
 from migration_store import MigrationError, apply_plan, plan_migration, plan_rollback  # noqa: E402
 from recovery_store import RecoveryError, RecoveryStore  # noqa: E402
 from product_manager import ProductManagerError, update_workspace  # noqa: E402
@@ -172,6 +173,47 @@ def command_doctor(as_json: bool) -> int:
     return 0 if result["status"] == "healthy" else 1
 
 
+def command_todos(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    due_before = None
+    if args.due_before:
+        try:
+            due_before = date.fromisoformat(args.due_before)
+        except ValueError as error:
+            raise ViewError("E_TODO_DATE", "--due-before must be YYYY-MM-DD") from error
+    values = KnowledgeViews(ROOT).todos(
+        due_before=due_before,
+        state=args.state,
+        include_closed=args.all,
+    )
+    if args.json:
+        print(json.dumps({"todos": values, "count": len(values)}, ensure_ascii=False, indent=2))
+    elif not values:
+        print("No matching TODOs.")
+    else:
+        for value in values:
+            marker = "x" if value["closed"] else " "
+            timing = f" | Due {value['due']}" if value["due"] else ""
+            if value["target"]:
+                timing += f" | Target {value['target']}"
+            print(f"[{marker}] {value['text']} | {value['state']}{timing}")
+    return 0
+
+
+def command_duplicates(as_json: bool) -> int:
+    values = KnowledgeViews(ROOT).duplicate_lines()
+    if as_json:
+        print(json.dumps({"duplicates": values, "count": len(values)}, ensure_ascii=False, indent=2))
+    elif not values:
+        print("No exact cross-document duplicates found.")
+    else:
+        for value in values:
+            locations = ", ".join(f"{item['path']}:{item['line']}" for item in value["locations"])
+            print(f"{value['text']} | {locations}")
+    return 0
+
+
 def command_recover(as_json: bool, plan_id: str | None) -> int:
     store = RecoveryStore(ROOT)
     result = store.apply_recovery(plan_id) if plan_id else store.plan_recovery()
@@ -294,6 +336,13 @@ def main() -> None:
     subparsers.add_parser("hook-status")
     doctor = subparsers.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
+    todos = subparsers.add_parser("todos")
+    todos.add_argument("--due-before")
+    todos.add_argument("--state")
+    todos.add_argument("--all", action="store_true")
+    todos.add_argument("--json", action="store_true")
+    duplicates = subparsers.add_parser("duplicates")
+    duplicates.add_argument("--json", action="store_true")
     recover = subparsers.add_parser("recover")
     recover.add_argument("--json", action="store_true")
     recover.add_argument("--apply", metavar="PLAN_ID")
@@ -336,6 +385,10 @@ def main() -> None:
             code = command_hook_status()
         elif args.command == "doctor":
             code = command_doctor(args.json)
+        elif args.command == "todos":
+            code = command_todos(args)
+        elif args.command == "duplicates":
+            code = command_duplicates(args.json)
         elif args.command == "recover":
             code = command_recover(args.json, args.apply)
         elif args.command == "update":
@@ -352,7 +405,7 @@ def main() -> None:
             code = command_context_resolve(args.deferred, args.capture, args.decision, args.request)
         else:
             code = command_context_discard(args.capture, args.reason)
-    except (ContextError, MigrationError, RecoveryError, ProductManagerError) as error:
+    except (ContextError, MigrationError, RecoveryError, ProductManagerError, ViewError) as error:
         print(f"ERROR {error.code} {error.detail}", file=sys.stderr)
         code = 1
     raise SystemExit(code)

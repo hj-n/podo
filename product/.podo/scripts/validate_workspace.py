@@ -19,6 +19,9 @@ EVENT_PATH_RE = re.compile(r"^events/(\d{4})/(\d{2})/\d{4}-\d{2}-\d{2}_\d{6}-[a-
 DELTA_PATH_RE = re.compile(r"^deltas/(\d{4})/(\d{2})/\d{4}-\d{2}-\d{2}_\d{6}-[a-z0-9][a-z0-9-]*\.md$")
 FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*(.+)$", re.MULTILINE)
 LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+PLAIN_REFERENCE_RE = re.compile(
+    r"(?<!\()(?P<path>(?:\.\.?/)+(?:events|deltas|state|people|research)/[A-Za-z0-9_./-]+(?:\.md|\.pdf))"
+)
 TODO_RE = re.compile(r"^- \[([ xX])\]\s+(.+)$")
 TODO_FIELD_RE = re.compile(r"^\s+- (Created|Due|Completed|Cancelled|Reopened|Result):\s*(.+)$")
 TOKEN_RE = re.compile(r"\{\{[A-Z][A-Z0-9_]*\}\}")
@@ -325,6 +328,11 @@ class Validator:
                     self.add("E_TODO_ORDER", path, f"Reopened on line {index + 1} precedes its terminal date")
             for link_value in LINK_RE.findall(text):
                 self.safe_target(path, link_value, "E_STATE_LINK")
+            markdown_spans = [match.span() for match in LINK_RE.finditer(text)]
+            for match in PLAIN_REFERENCE_RE.finditer(text):
+                if any(start <= match.start() and match.end() <= end for start, end in markdown_spans):
+                    continue
+                self.add("E_PLAIN_REFERENCE", path, f"tracking path must be a Markdown link: {match.group('path')}")
         if self.mode == "synthetic-fixture" and not found:
             self.add("E_STATE_MISSING", "state", "at least one synthetic State is required")
 
