@@ -65,7 +65,7 @@
 - `run_phase9_regression.py`가 Phase 1–8의 10개 program과 Phase 9 suite를 연속 통과했다.
 - Phase 6 release builder가 product-only 0.7.0 archive를 두 번 만들고 동일 SHA-256 `824f1313a00e0c9158b64bc7d02ba07edd58eaee5828a00d2dd71ce5c0ed48c1`을 확인했다.
 - README는 candidate 상태, Workspace 1→2 migration 경계, People·Research·integrity·Event storage commands와 Phase 9 검증법을 설명한다.
-- 0.7.0은 검증된 unpublished candidate다. tag, GitHub Release와 실제 User Workspace migration은 수행하지 않았다.
+- 0.7.0은 검증된 unpublished candidate다. tag와 GitHub Release는 수행하지 않았다.
 
 ### Legacy Upgrade Evidence
 
@@ -74,3 +74,6 @@
 - 실제 Workspace에는 과거 Podo가 만든 plain Delta path가 남아 있었다. 새 참조는 Context preflight에서 계속 거부하되, 기존 plain path는 update/migration을 막지 않는 read-only doctor warning `PODO_D121_PLAIN_REFERENCE`로 분리했다.
 - Bridge update 최종 검증 실패는 제품 0.6.0과 기존 Context를 자동 복원했다. 적용 전후 durable Context aggregate SHA-256은 `b2ecb7dd0644369896f1308f1ad98144d4a13b189ad2747be73e4b01f38d76b9`로 동일했다.
 - 호환성 수정 뒤 Phase 1–9 전체 regression이 다시 통과했다.
+- 사용자가 지정한 외부 Workspace는 exact plan `migration-c1a5dacde00a61232c73fdb6`을 별도로 승인한 뒤 0.7.0 / Workspace 2로 전환되었다. 영향 path는 이전에 없던 `people`과 `research`뿐이었고 retained backup은 complete/committed 상태다.
+- 실제 적용 뒤 validator가 통과했고 durable Context aggregate SHA-256은 적용 전과 동일했다. 실제 Context 내용은 Development Workspace로 복사하지 않았다.
+- 기존 capture-health error는 0.6.0에서 기록된 stale runtime 진단이다. 새 policy와 hook을 읽는 외부 Workspace의 새 Codex task가 끝나면 0.7.0 adapter로 다시 진단한다.

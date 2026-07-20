@@ -16,4 +16,4 @@
 
 ## Release Boundary
 
-이 결정은 현재 checkout의 제품 candidate가 Phase 9 gate를 통과했다는 뜻이다. Public tag·GitHub Release와 실제 User Workspace의 0.7.0 update/migration 승인은 포함하지 않는다.
+이 결정은 현재 checkout의 제품 candidate가 Phase 9 gate를 통과했다는 뜻이다. 사용자가 별도로 승인한 하나의 외부 Workspace migration은 완료됐지만, Public tag와 GitHub Release 승인은 포함하지 않는다.
