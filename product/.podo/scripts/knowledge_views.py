@@ -165,3 +165,36 @@ class KnowledgeViews:
         if len(matches) > 1:
             raise ViewError("E_PERSON_AMBIGUOUS", ",".join(value["slug"] for value in matches))
         return matches
+
+    def research_papers(self, query: str | None = None) -> list[dict[str, Any]]:
+        directory = self.root / "research/papers"
+        values: list[dict[str, Any]] = []
+        for metadata in sorted(directory.glob("*/metadata.md")) if directory.is_dir() else []:
+            parsed = {
+                match.group(1): match.group(2).strip()
+                for line in metadata.read_text(encoding="utf-8").splitlines()
+                if (match := FIELD_RE.match(line))
+            }
+            values.append(
+                {
+                    "slug": metadata.parent.name,
+                    "title": parsed.get("Title", ""),
+                    "authors": parsed.get("Authors", "unknown"),
+                    "year": parsed.get("Year", "unknown"),
+                    "sha256": parsed.get("SHA-256"),
+                    "path": metadata.parent.relative_to(self.root).as_posix(),
+                }
+            )
+        if query is None:
+            return values
+        folded = query.casefold().strip()
+        matches = [
+            value
+            for value in values
+            if folded == value["slug"].casefold()
+            or folded in value["title"].casefold()
+            or folded in value["authors"].casefold()
+        ]
+        if not matches:
+            raise ViewError("E_RESEARCH_NOT_FOUND", query)
+        return matches

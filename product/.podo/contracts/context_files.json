@@ -21,6 +21,7 @@
     ],
     "completeness_values": [
       "complete-local-transcript",
+      "complete-source-document",
       "partial"
     ],
     "immutable_after_capture": true

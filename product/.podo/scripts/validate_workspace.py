@@ -221,7 +221,7 @@ class Validator:
             if completeness and completeness not in allowed:
                 self.add("E_EVENT_COMPLETENESS", metadata, f"unknown completeness: {completeness}")
             missing = fields.get("Missing-Record-Families", "")
-            if completeness == "complete-local-transcript" and missing != "none":
+            if completeness in {"complete-local-transcript", "complete-source-document"} and missing != "none":
                 self.add("E_EVENT_COMPLETENESS", metadata, "complete original must declare no missing record families")
             if completeness == "partial" and missing in {"", "none"}:
                 self.add("E_EVENT_COMPLETENESS", metadata, "partial original must name missing record families")
@@ -375,12 +375,73 @@ class Validator:
                     continue
                 self.add("E_PLAIN_REFERENCE", path, f"tracking path must be a Markdown link: {match.group('path')}")
 
+    def validate_research(self) -> None:
+        papers = self.root / "research/papers"
+        for directory in sorted(path for path in papers.iterdir() if path.is_dir()) if papers.is_dir() else []:
+            metadata = directory / "metadata.md"
+            original = directory / "original.pdf"
+            notes = directory / "notes.md"
+            for path in (metadata, original, notes):
+                if path.is_symlink() or not path.is_file():
+                    self.add("E_RESEARCH_PATH", path, "required Research paper file is missing")
+            if not all(path.is_file() and not path.is_symlink() for path in (metadata, original, notes)):
+                continue
+            metadata_text = metadata.read_text(encoding="utf-8")
+            metadata_fields = self.fields(metadata_text)
+            for name in ("Title", "Authors", "Year", "Imported", "SHA-256", "Original-Entrypoint"):
+                if not metadata_fields.get(name):
+                    self.add("E_RESEARCH_FIELD", metadata, f"{name} is required")
+            raw = original.read_bytes()
+            digest = hashlib.sha256(raw).hexdigest()
+            if not raw.startswith(b"%PDF-"):
+                self.add("E_RESEARCH_PDF", original, "original must have a PDF header")
+            if metadata_fields.get("SHA-256") != digest:
+                self.add("E_RESEARCH_HASH", metadata, "SHA-256 does not match original.pdf")
+            if metadata_fields.get("Original-Entrypoint") != "./original.pdf":
+                self.add("E_RESEARCH_FIELD", metadata, "Original-Entrypoint must be ./original.pdf")
+            notes_text = notes.read_text(encoding="utf-8")
+            notes_fields = self.fields(notes_text)
+            try:
+                date.fromisoformat(notes_fields.get("Updated", ""))
+            except ValueError:
+                self.add("E_RESEARCH_FIELD", notes, "Updated must be YYYY-MM-DD")
+            if notes_fields.get("Paper-SHA-256") != digest:
+                self.add("E_RESEARCH_HASH", notes, "Paper-SHA-256 does not match original.pdf")
+            if any(TODO_RE.match(line) for line in notes_text.splitlines()):
+                self.add("E_RESEARCH_TODO", notes, "Research must link TODOs whose canonical location is State")
+            self.validate_current_links(notes, notes_text, "E_RESEARCH_LINK")
+        for relative in ("research/topics", "research/projects"):
+            directory = self.root / relative
+            for path in sorted(directory.glob("*.md")) if directory.is_dir() else []:
+                text = path.read_text(encoding="utf-8")
+                values = self.fields(text)
+                try:
+                    date.fromisoformat(values.get("Updated", ""))
+                except ValueError:
+                    self.add("E_RESEARCH_FIELD", path, "Updated must be YYYY-MM-DD")
+                if any(TODO_RE.match(line) for line in text.splitlines()):
+                    self.add("E_RESEARCH_TODO", path, "Research must link TODOs whose canonical location is State")
+                self.validate_current_links(path, text, "E_RESEARCH_LINK")
+
+    def validate_current_links(self, path: Path, text: str, code: str) -> None:
+        for link_value in LINK_RE.findall(text):
+            self.safe_target(path, link_value, code)
+        spans = [match.span() for match in LINK_RE.finditer(text)]
+        for match in PLAIN_REFERENCE_RE.finditer(text):
+            if any(start <= match.start() and match.end() <= end for start, end in spans):
+                continue
+            self.add("E_PLAIN_REFERENCE", path, f"tracking path must be a Markdown link: {match.group('path')}")
+
     def validate_unresolved_tokens(self) -> None:
         paths = [self.root / "user_config.md"]
         paths.extend((self.root / "events").glob("*/*/*/metadata.md"))
         paths.extend((self.root / "deltas").glob("*/*/*.md"))
         paths.extend((self.root / "state").glob("*.md"))
         paths.extend((self.root / "people").glob("*.md"))
+        paths.extend((self.root / "research/topics").glob("*.md"))
+        paths.extend((self.root / "research/projects").glob("*.md"))
+        paths.extend((self.root / "research/papers").glob("*/metadata.md"))
+        paths.extend((self.root / "research/papers").glob("*/notes.md"))
         for path in paths:
             if path.is_file() and TOKEN_RE.search(path.read_text(encoding="utf-8")):
                 self.add("E_TEMPLATE_TOKEN", path, "unresolved template token remains")
@@ -398,6 +459,7 @@ class Validator:
         self.validate_deltas(context_contract)
         self.validate_states()
         self.validate_people()
+        self.validate_research()
         self.validate_unresolved_tokens()
         return sorted(self.problems)
 

@@ -363,6 +363,14 @@ class ContextStore:
                 fail("E_REQUEST_PERSON", f"{slug} Name is required")
             if any(TODO_RE.match(line) for line in text.splitlines()):
                 fail("E_REQUEST_PERSON_TODO", f"{slug} must link State TODOs instead of owning TODO checkboxes")
+        elif kind in {"research-paper", "research-topic", "research-project"}:
+            if any(TODO_RE.match(line) for line in text.splitlines()):
+                fail("E_REQUEST_RESEARCH_TODO", f"{slug} must link State TODOs instead of owning TODO checkboxes")
+            if kind == "research-paper":
+                value = {match.group(1): match.group(2).strip() for match in FIELD_RE.finditer(text)}
+                original = self.root / f"research/papers/{slug}/original.pdf"
+                if not original.is_file() or value.get("Paper-SHA-256") != sha256_file(original):
+                    fail("E_REQUEST_RESEARCH_HASH", f"{slug} notes must match original.pdf")
         elif kind != "state":
             fail("E_REQUEST_TARGET", f"unsupported target kind: {kind}")
 
@@ -392,6 +400,18 @@ class ContextStore:
                 state_text = str(update.get("person_markdown") or "")
                 expected = update.get("expected_person_sha256")
                 state_path = self.root / f"people/{state_slug}.md"
+            elif target_kind in {"research-paper", "research-topic", "research-project"}:
+                state_slug = str(update.get("research_slug") or "")
+                state_text = str(update.get("research_markdown") or "")
+                expected = update.get("expected_research_sha256")
+                if target_kind == "research-paper":
+                    state_path = self.root / f"research/papers/{state_slug}/notes.md"
+                    if not state_path.is_file():
+                        fail("E_REQUEST_RESEARCH", f"import paper before updating notes: {state_slug}")
+                elif target_kind == "research-topic":
+                    state_path = self.root / f"research/topics/{state_slug}.md"
+                else:
+                    state_path = self.root / f"research/projects/{state_slug}.md"
             else:
                 fail("E_REQUEST_TARGET", f"unsupported target kind: {target_kind}")
             target_key = f"{target_kind}:{state_slug}"
@@ -580,6 +600,7 @@ class ContextStore:
             "deltas": [str(plan.delta_path.relative_to(self.root)) for plan in plans],
             "states": [str(plan.state_path.relative_to(self.root)) for plan in plans if plan.target_kind == "state"],
             "people": [str(plan.state_path.relative_to(self.root)) for plan in plans if plan.target_kind == "people"],
+            "research": [str(plan.state_path.relative_to(self.root)) for plan in plans if plan.target_kind.startswith("research-")],
             **(
                 {"resolution_of": resolution_context[0], "resolution": resolution_context[1]}
                 if resolution_context is not None
@@ -653,6 +674,7 @@ class ContextStore:
             "deltas": [str(plan.delta_path.relative_to(self.root)) for plan in plans],
             "states": [str(plan.state_path.relative_to(self.root)) for plan in plans if plan.target_kind == "state"],
             "people": [str(plan.state_path.relative_to(self.root)) for plan in plans if plan.target_kind == "people"],
+            "research": [str(plan.state_path.relative_to(self.root)) for plan in plans if plan.target_kind.startswith("research-")],
             "receipt": str(self.receipt_path(capture_id).relative_to(self.root)),
             "transaction": transaction_result["transaction_id"],
             **({"resolved_deferred": resolution_context[0]} if resolution_context is not None else {}),

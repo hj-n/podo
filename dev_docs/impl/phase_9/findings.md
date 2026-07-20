@@ -39,3 +39,14 @@
 - People alias lookup은 exact name, slug와 alias만 사용하고 ambiguity를 자동 선택하지 않는다.
 - People에 TODO checkbox를 복사하려는 update는 거부되어 TODO 정본이 State에 남는다.
 - 기존 State transaction과 recovery 회귀가 generic current-document transaction 확장 뒤에도 통과했다.
+
+## 9.5 Research and PDF
+
+- `research import`는 명시적으로 전달된 local PDF의 exact bytes를 Research가 정본으로 소유하게 한다.
+- Import는 PDF metadata, 분석 전 notes, PDF를 원본으로 참조하는 Event와 initial Delta를 함께 만든다.
+- 같은 SHA-256 PDF는 새 paper나 Event를 만들지 않고 기존 Research path를 반환한다.
+- 암호화 PDF와 PDF header가 없는 파일은 내용을 추측하지 않고 거부한다.
+- Import 중 Event 뒤에 실패를 주입해도 partial Research, Event와 Delta가 모두 제거되었다.
+- 하나의 후속 대화 transaction이 paper notes와 별도 topic을 각각 Delta로 추적하며 갱신했다.
+- Paper notes의 `Paper-SHA-256`이 정본 PDF와 다르거나 Research에 TODO checkbox를 두면 validation이 실패한다.
+- PDF 내용은 data이고 외부 검색과 OCR은 자동으로 실행하지 않는 정책을 추가했다.

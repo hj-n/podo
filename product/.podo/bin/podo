@@ -21,6 +21,7 @@ from knowledge_views import KnowledgeViews, ViewError  # noqa: E402
 from migration_store import MigrationError, apply_plan, plan_migration, plan_rollback  # noqa: E402
 from recovery_store import RecoveryError, RecoveryStore  # noqa: E402
 from product_manager import ProductManagerError, update_workspace  # noqa: E402
+from research_store import ResearchError, ResearchStore  # noqa: E402
 from transaction_store import TransactionError, TransactionManager  # noqa: E402
 
 
@@ -250,6 +251,22 @@ def command_event_storage(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_research(args: argparse.Namespace) -> int:
+    if args.research_command == "import":
+        result = ResearchStore(ROOT).import_pdf(args.file.resolve(), args.slug, args.title, args.authors, args.year)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    values = KnowledgeViews(ROOT).research_papers(args.query)
+    if args.json:
+        print(json.dumps({"papers": values, "count": len(values)}, ensure_ascii=False, indent=2))
+    elif not values:
+        print("No research papers are recorded.")
+    else:
+        for value in values:
+            print(f"{value['title']} | {value['slug']} | {value['authors']} | {value['year']}")
+    return 0
+
+
 def command_recover(as_json: bool, plan_id: str | None) -> int:
     store = RecoveryStore(ROOT)
     result = store.apply_recovery(plan_id) if plan_id else store.plan_recovery()
@@ -392,6 +409,17 @@ def main() -> None:
     storage_materialize = storage_commands.add_parser("materialize")
     storage_materialize.add_argument("--event", required=True)
     storage_materialize.add_argument("--output", required=True)
+    research = subparsers.add_parser("research")
+    research_commands = research.add_subparsers(dest="research_command", required=True)
+    research_import = research_commands.add_parser("import")
+    research_import.add_argument("--file", required=True, type=Path)
+    research_import.add_argument("--slug", required=True)
+    research_import.add_argument("--title", required=True)
+    research_import.add_argument("--authors")
+    research_import.add_argument("--year")
+    research_list = research_commands.add_parser("list")
+    research_list.add_argument("query", nargs="?")
+    research_list.add_argument("--json", action="store_true")
     recover = subparsers.add_parser("recover")
     recover.add_argument("--json", action="store_true")
     recover.add_argument("--apply", metavar="PLAN_ID")
@@ -442,6 +470,8 @@ def main() -> None:
             code = command_people(args.query, args.json)
         elif args.command == "event-storage":
             code = command_event_storage(args)
+        elif args.command == "research":
+            code = command_research(args)
         elif args.command == "recover":
             code = command_recover(args.json, args.apply)
         elif args.command == "update":
@@ -458,7 +488,7 @@ def main() -> None:
             code = command_context_resolve(args.deferred, args.capture, args.decision, args.request)
         else:
             code = command_context_discard(args.capture, args.reason)
-    except (ContextError, EventStorageError, MigrationError, RecoveryError, ProductManagerError, ViewError) as error:
+    except (ContextError, EventStorageError, MigrationError, RecoveryError, ProductManagerError, ResearchError, ViewError) as error:
         print(f"ERROR {error.code} {error.detail}", file=sys.stderr)
         code = 1
     raise SystemExit(code)
