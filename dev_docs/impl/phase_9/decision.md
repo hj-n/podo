@@ -11,6 +11,7 @@
 - Workspace 1→2 migration은 People과 Research만 additive하게 추가하고 기존 State bytes를 보존했다.
 - People과 Research의 별도 저장, PDF 정본·hash 중복 감지, paper/topic/project transaction과 TODO의 State 정본 경계가 통과했다.
 - 실제 Codex 6-task acceptance와 Phase 1–9 전체 synthetic regression이 통과했다.
+- 실제 legacy engine을 재현한 0.6.0 → compatible bridge → 0.7.0 migration regression이 통과했고, 기존 plain reference는 경고로 보존하면서 새 plain reference는 apply 전에 거부했다.
 - 테스트에는 synthetic 자료만 사용했고 disposable Desktop Workspace는 정리되었다.
 
 ## Release Boundary

@@ -98,6 +98,8 @@ Interface Codex에 “Podo 업데이트해줘”라고 명시적으로 요청해
 
 Workspace 1에서 People과 Research를 사용하는 0.7.0으로 이동할 때는 일반 update와 별도로 migration plan을 검토하고 exact plan을 적용한다. 아래 명령은 0.7.0 public Release가 실제로 게시된 뒤 사용할 수 있으며, 현재 unpublished candidate에는 local test Release source로만 검증되어 있다.
 
+0.6.0처럼 `people/`과 `research/`를 아직 모르는 migration engine에서 출발하면 Workspace를 바꾸지 않는 호환 bridge product update를 먼저 거친다. Bridge는 migration plan을 이해하게 할 뿐이며, 실제 Workspace 1→2 변경과 backup은 아래 별도 plan/apply 단계에서만 일어난다.
+
 ```bash
 ./.podo/bin/podo migrate --version 0.7.0
 ./.podo/bin/podo migrate --apply <plan-id>

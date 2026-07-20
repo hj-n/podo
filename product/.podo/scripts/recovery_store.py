@@ -24,6 +24,10 @@ from transaction_store import (
 
 
 FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*(.+)$", re.MULTILINE)
+LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+PLAIN_REFERENCE_RE = re.compile(
+    r"(?<!\()(?P<path>(?:\.\.?/)+(?:events|deltas|state|people|research)/[A-Za-z0-9_./-]+(?:\.md|\.pdf))"
+)
 PLAN_ID_RE = re.compile(r"^recovery-[a-f0-9]{20}$")
 
 
@@ -346,6 +350,31 @@ class RecoveryStore:
             )
         return findings
 
+    def plain_reference_findings(self) -> list[dict[str, Any]]:
+        paths = list((self.root / "state").glob("*.md"))
+        paths.extend((self.root / "people").glob("*.md"))
+        paths.extend((self.root / "research/topics").glob("*.md"))
+        paths.extend((self.root / "research/projects").glob("*.md"))
+        paths.extend((self.root / "research/papers").glob("*/notes.md"))
+        findings: list[dict[str, Any]] = []
+        for path in sorted(value for value in paths if value.is_file() and not value.is_symlink()):
+            text = path.read_text(encoding="utf-8")
+            spans = [match.span() for match in LINK_RE.finditer(text)]
+            for match in PLAIN_REFERENCE_RE.finditer(text):
+                if any(start <= match.start() and match.end() <= end for start, end in spans):
+                    continue
+                line = text.count("\n", 0, match.start()) + 1
+                relative = path.relative_to(self.root).as_posix()
+                findings.append(
+                    self.finding(
+                        "PODO_D121_PLAIN_REFERENCE",
+                        "warning",
+                        f"Legacy tracking path should become a Markdown link: {match.group('path')}",
+                        [f"{relative}:{line}"],
+                    )
+                )
+        return findings
+
     def doctor(self) -> dict[str, Any]:
         findings = (
             self.transaction_findings()
@@ -357,6 +386,7 @@ class RecoveryStore:
             + self.product_findings()
             + self.hook_findings()
             + self.duplicate_context_findings()
+            + self.plain_reference_findings()
         )
         findings.sort(key=lambda item: (item["severity"], item["code"], item["paths"]))
         status = "healthy"

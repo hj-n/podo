@@ -26,6 +26,10 @@ TODO_RE = re.compile(r"^- \[([ xX])\]\s+(.+)$")
 TODO_FIELD_RE = re.compile(r"^\s+- (Created|Due|Completed|Cancelled|Reopened|Result):\s*(.+)$")
 TOKEN_RE = re.compile(r"\{\{[A-Z][A-Z0-9_]*\}\}")
 DELTA_MARKDOWN_LINK_RE = re.compile(r"\[[^\]\n]+\]\(\{\{DELTA_LINK\}\}\)")
+LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+PLAIN_REFERENCE_RE = re.compile(
+    r"(?<!\()(?P<path>(?:\.\.?/)+(?:events|deltas|state|people|research)/[A-Za-z0-9_./-]+(?:\.md|\.pdf))"
+)
 CONFIDENCE_VALUES = {"confirmed", "inferred", "needs-confirmation"}
 
 
@@ -311,6 +315,14 @@ class ContextStore:
         other_tokens = [token for token in TOKEN_RE.findall(text) if token != allowed]
         if other_tokens:
             fail("E_REQUEST_TOKEN", f"{state_slug} has unresolved template tokens")
+        markdown_spans = [match.span() for match in LINK_RE.finditer(text)]
+        for match in PLAIN_REFERENCE_RE.finditer(text):
+            if any(start <= match.start() and match.end() <= end for start, end in markdown_spans):
+                continue
+            fail(
+                "E_REQUEST_STATE_LINK",
+                f"{state_slug} tracking path must be a Markdown link: {match.group('path')}",
+            )
         fields = {match.group(1): match.group(2).strip() for match in FIELD_RE.finditer(text)}
         try:
             date.fromisoformat(fields["Updated"])

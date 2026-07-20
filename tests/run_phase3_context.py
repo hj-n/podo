@@ -241,6 +241,13 @@ def main() -> None:
         )
         plain_link_request = request_file(workspace, "plain-link", request([plain_link]))
         expect_failure(workspace, plain_link_id, plain_link_request, "E_REQUEST_STATE_LINK")
+
+        session, turn = "context-session-009", "context-turn-009"
+        plain_reference_id = capture(workspace, transcript(root, session, turn), session, turn)
+        plain_reference = update("plain-reference", "새 plain tracking path를 거부한다.")
+        plain_reference["state_markdown"] += "\nLegacy: ../deltas/2026/07/not-a-link.md\n"
+        plain_reference_request = request_file(workspace, "plain-reference", request([plain_reference]))
+        expect_failure(workspace, plain_reference_id, plain_reference_request, "E_REQUEST_STATE_LINK")
         unfinished = list((workspace / ".podo-work/transactions").glob("context-*"))
         if unfinished:
             raise AssertionError(f"plain Delta token created a transaction: {unfinished}")

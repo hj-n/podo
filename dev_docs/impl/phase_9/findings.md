@@ -66,3 +66,11 @@
 - Phase 6 release builder가 product-only 0.7.0 archive를 두 번 만들고 동일 SHA-256 `824f1313a00e0c9158b64bc7d02ba07edd58eaee5828a00d2dd71ce5c0ed48c1`을 확인했다.
 - README는 candidate 상태, Workspace 1→2 migration 경계, People·Research·integrity·Event storage commands와 Phase 9 검증법을 설명한다.
 - 0.7.0은 검증된 unpublished candidate다. tag, GitHub Release와 실제 User Workspace migration은 수행하지 않았다.
+
+### Legacy Upgrade Evidence
+
+- 실제 0.6.0 User Workspace의 planner는 미래 사용자 root인 `people`과 `research`를 알지 못해 `E_MIGRATION_IMPACT`로 안전하게 중단됐다. 기존 합성 테스트는 최신 engine으로 옛 Workspace만 흉내 내 이 경계를 놓쳤다.
+- 0.6.0과 Workspace 1을 그대로 재현한 새 regression은 첫 plan 실패, Workspace를 바꾸지 않는 compatible bridge update, 0.7.0 exact migration plan과 apply를 실제 설치 CLI 순서로 검증한다.
+- 실제 Workspace에는 과거 Podo가 만든 plain Delta path가 남아 있었다. 새 참조는 Context preflight에서 계속 거부하되, 기존 plain path는 update/migration을 막지 않는 read-only doctor warning `PODO_D121_PLAIN_REFERENCE`로 분리했다.
+- Bridge update 최종 검증 실패는 제품 0.6.0과 기존 Context를 자동 복원했다. 적용 전후 durable Context aggregate SHA-256은 `b2ecb7dd0644369896f1308f1ad98144d4a13b189ad2747be73e4b01f38d76b9`로 동일했다.
+- 호환성 수정 뒤 Phase 1–9 전체 regression이 다시 통과했다.

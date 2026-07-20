@@ -51,12 +51,15 @@ def main() -> None:
         print("PASS exact cross-document duplicate report")
 
         first.write_text(first.read_text(encoding="utf-8") + "\n근거: ../deltas/2026/07/2026-07-15_091500-synthetic-planning.md\n", encoding="utf-8")
-        invalid = run([str(podo), "validate", "--mode", "context-present"], cwd=workspace)
-        if invalid.returncode == 0 or "E_PLAIN_REFERENCE" not in invalid.stdout:
-            raise AssertionError(invalid.stdout + invalid.stderr)
-        if "tracking path must be a Markdown link" not in invalid.stdout:
-            raise AssertionError(invalid.stdout)
-        print("PASS plain tracking reference diagnosis")
+        valid = run([str(podo), "validate", "--mode", "context-present"], cwd=workspace)
+        if valid.returncode:
+            raise AssertionError(valid.stdout + valid.stderr)
+        doctor = run([str(podo), "doctor", "--json"], cwd=workspace)
+        value = json.loads(doctor.stdout)
+        plain = [finding for finding in value["findings"] if finding["code"] == "PODO_D121_PLAIN_REFERENCE"]
+        if len(plain) != 1 or plain[0]["severity"] != "warning":
+            raise AssertionError(doctor.stdout)
+        print("PASS legacy plain tracking reference is a read-only doctor warning")
 
 
 if __name__ == "__main__":

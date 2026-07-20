@@ -3,7 +3,7 @@
 - Active phase: 9 — Dogfooding and Stabilization
 - Status: Complete — unpublished 0.7.0 candidate
 - Current step: 9.7 — Complete
-- Last verified: Phase 1–9 synthetic regression, real Codex 6-task People·Research continuity acceptance, disposable Desktop cleanup and deterministic 0.7.0 candidate passed (2026-07-20)
+- Last verified: Phase 1–9 synthetic regression, real Codex 6-task continuity, legacy 0.6.0 → compatible bridge → 0.7.0 migration, legacy-reference warning and new-reference preflight passed (2026-07-20)
 - Blockers: None
 - Next action: Public Release or an actual User Workspace update/migration only after a separate explicit user request.
 - Updated: 2026-07-20
