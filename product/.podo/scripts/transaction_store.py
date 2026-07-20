@@ -230,14 +230,16 @@ class TransactionManager:
                 delta_stage = staged / f"deltas/{index}.md"
                 delta_stage.parent.mkdir(parents=True, exist_ok=True)
                 delta_stage.write_text(str(update["delta_text"]), encoding="utf-8")
-                state_stage = staged / f"states/{update['state_slug']}.md"
+                target_key = str(update.get("target_key") or f"state:{update['state_slug']}")
+                safe_key = target_key.replace(":", "-")
+                state_stage = staged / f"states/{safe_key}.md"
                 state_stage.parent.mkdir(parents=True, exist_ok=True)
                 state_stage.write_text(str(update["state_text"]), encoding="utf-8")
                 state_stage.chmod(int(update["mode"]))
                 original_stage: str | None = None
                 original_sha: str | None = None
                 if update.get("existing_state") is not None:
-                    original = originals / f"states/{update['state_slug']}.md"
+                    original = originals / f"states/{safe_key}.md"
                     original.parent.mkdir(parents=True, exist_ok=True)
                     original.write_bytes(update["existing_state"])
                     original.chmod(int(update["mode"]))
@@ -251,7 +253,7 @@ class TransactionManager:
                 )
                 states.append(
                     {
-                        "step": f"state:{update['state_slug']}", "state_slug": update["state_slug"],
+                        "step": f"state:{safe_key}", "state_slug": target_key,
                         "staged": state_stage.relative_to(directory).as_posix(), "target": self.relative(Path(update["state_target"])),
                         "base_sha256": original_sha, "expected_sha256": original_sha,
                         "new_sha256": sha256_file(state_stage), "original": original_stage,

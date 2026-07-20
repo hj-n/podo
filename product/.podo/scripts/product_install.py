@@ -21,7 +21,8 @@ from typing import Any
 
 PRODUCT_ROOTS = ("AGENTS.md", ".codex", ".podo")
 USER_FILES = ("WORKSPACE_VERSION", "user_config.md")
-USER_DIRS = (".podo-work", ".podo-backups", "events", "deltas", "state")
+USER_DIRS = (".podo-work", ".podo-backups", "events", "deltas", "state", "people", "research")
+USER_SUBDIRS = ("research/papers", "research/topics", "research/projects")
 MANIFEST_PATH = ".podo/install-manifest.json"
 SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 SHA_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -199,6 +200,8 @@ def build_stage(
     )
     for directory in USER_DIRS:
         (stage / directory).mkdir()
+    for directory in ("research/papers", "research/topics", "research/projects"):
+        (stage / directory).mkdir(parents=True, exist_ok=True)
     shutil.copy2(product / ".podo/templates/workspace/WORKSPACE_VERSION", stage / "WORKSPACE_VERSION")
     write_text(stage / "user_config.md", render_user_config(product / ".podo/templates/workspace/user_config.md"))
     initial_workspace_version = int((stage / "WORKSPACE_VERSION").read_text(encoding="utf-8").strip())
@@ -291,6 +294,11 @@ def apply_fresh(stage: Path, target: Path, already_installed: bool) -> str:
             path = target / relative
             if not path.exists():
                 path.mkdir()
+                created.append(CreatedPath(path, "directory"))
+        for relative in USER_SUBDIRS:
+            path = target / relative
+            if not path.exists():
+                path.mkdir(parents=True)
                 created.append(CreatedPath(path, "directory"))
         for relative in USER_FILES:
             path = target / relative

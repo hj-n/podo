@@ -37,6 +37,7 @@ class ContextError(Exception):
 
 @dataclass(frozen=True)
 class UpdatePlan:
+    target_kind: str
     state_slug: str
     state_path: Path
     delta_path: Path
@@ -351,6 +352,20 @@ class ContextStore:
             if prior_terminal is not None and reopened is not None and reopened < prior_terminal:
                 fail("E_REQUEST_TODO_LIFECYCLE", f"{state_slug} Reopened cannot precede its terminal date")
 
+    def validate_current_text(self, text: str, target_key: str, *, requires_delta_token: bool = True) -> None:
+        kind, separator, slug = target_key.partition(":")
+        if not separator:
+            kind, slug = "state", target_key
+        self.validate_state_text(text, slug, requires_delta_token=requires_delta_token)
+        if kind == "people":
+            value = {match.group(1): match.group(2).strip() for match in FIELD_RE.finditer(text)}
+            if not value.get("Name"):
+                fail("E_REQUEST_PERSON", f"{slug} Name is required")
+            if any(TODO_RE.match(line) for line in text.splitlines()):
+                fail("E_REQUEST_PERSON_TODO", f"{slug} must link State TODOs instead of owning TODO checkboxes")
+        elif kind != "state":
+            fail("E_REQUEST_TARGET", f"unsupported target kind: {kind}")
+
     def build_plans(
         self,
         request: dict[str, Any],
@@ -366,10 +381,23 @@ class ContextStore:
         for index, update in enumerate(updates, start=1):
             if not isinstance(update, dict):
                 fail("E_REQUEST_FIELD", f"updates[{index}] must be an object")
-            state_slug = str(update.get("state_slug") or "")
-            if not SLUG_RE.fullmatch(state_slug) or state_slug in seen:
-                fail("E_REQUEST_STATE", f"invalid or duplicate state_slug: {state_slug}")
-            seen.add(state_slug)
+            target_kind = str(update.get("target_kind") or "state")
+            if target_kind == "state":
+                state_slug = str(update.get("state_slug") or "")
+                state_text = str(update.get("state_markdown") or "")
+                expected = update.get("expected_state_sha256")
+                state_path = self.root / f"state/{state_slug}.md"
+            elif target_kind == "people":
+                state_slug = str(update.get("person_slug") or "")
+                state_text = str(update.get("person_markdown") or "")
+                expected = update.get("expected_person_sha256")
+                state_path = self.root / f"people/{state_slug}.md"
+            else:
+                fail("E_REQUEST_TARGET", f"unsupported target kind: {target_kind}")
+            target_key = f"{target_kind}:{state_slug}"
+            if not SLUG_RE.fullmatch(state_slug) or target_key in seen:
+                fail("E_REQUEST_STATE", f"invalid or duplicate target: {target_key}")
+            seen.add(target_key)
             confidence = str(update.get("confidence") or "")
             if confidence not in CONFIDENCE_VALUES:
                 fail("E_REQUEST_FIELD", f"invalid confidence for {state_slug}")
@@ -378,13 +406,10 @@ class ContextStore:
                     "E_REQUEST_CONFIDENCE",
                     f"{state_slug} cannot apply inference or unconfirmed content to current State",
                 )
-            state_text = str(update.get("state_markdown") or "")
-            self.validate_state_text(state_text, state_slug)
-            state_path = self.root / f"state/{state_slug}.md"
+            self.validate_current_text(state_text, target_key)
             if state_path.is_symlink():
-                fail("E_REQUEST_STATE", f"State is a symlink: {state_slug}")
+                fail("E_REQUEST_STATE", f"current document is a symlink: {target_key}")
             existing_state = state_path.read_bytes() if state_path.is_file() else None
-            expected = update.get("expected_state_sha256")
             if existing_state is None:
                 if expected not in (None, ""):
                     fail("E_STATE_STALE", f"new State {state_slug} must use null expected hash")
@@ -395,8 +420,8 @@ class ContextStore:
                     fail("E_STATE_STALE", f"State changed before apply: {state_slug}")
                 existing_mode = stat.S_IMODE(state_path.stat().st_mode)
 
-            identity = hashlib.sha256(f"{capture['capture_id']}:{state_slug}".encode("utf-8")).hexdigest()[:8]
-            delta_name = f"{occurred.strftime('%Y-%m-%d_%H%M%S')}-{state_slug}-{identity}.md"
+            identity = hashlib.sha256(f"{capture['capture_id']}:{target_key}".encode("utf-8")).hexdigest()[:8]
+            delta_name = f"{occurred.strftime('%Y-%m-%d_%H%M%S')}-{target_kind}-{state_slug}-{identity}.md"
             delta_path = self.root / f"deltas/{occurred:%Y}/{occurred:%m}/{delta_name}"
             if delta_path.exists() or delta_path.is_symlink():
                 fail("E_DELTA_COLLISION", delta_path.relative_to(self.root).as_posix())
@@ -408,7 +433,7 @@ class ContextStore:
                     "",
                     f"Occurred: {capture['occurred']}",
                     f"Based-On: [Event metadata]({event_link})",
-                    f"Affects: [State]({state_link})",
+                    f"Affects: [{target_kind.title()}]({state_link})",
                     f"Confidence: {confidence}",
                     "",
                     "## Changed",
@@ -435,6 +460,7 @@ class ContextStore:
                 rendered_state += "\n"
             plans.append(
                 UpdatePlan(
+                    target_kind=target_kind,
                     state_slug=state_slug,
                     state_path=state_path,
                     delta_path=delta_path,
@@ -552,7 +578,8 @@ class ContextStore:
             "processed_at": processed_at,
             "event": str(event_metadata_path.relative_to(self.root)),
             "deltas": [str(plan.delta_path.relative_to(self.root)) for plan in plans],
-            "states": [str(plan.state_path.relative_to(self.root)) for plan in plans],
+            "states": [str(plan.state_path.relative_to(self.root)) for plan in plans if plan.target_kind == "state"],
+            "people": [str(plan.state_path.relative_to(self.root)) for plan in plans if plan.target_kind == "people"],
             **(
                 {"resolution_of": resolution_context[0], "resolution": resolution_context[1]}
                 if resolution_context is not None
@@ -594,6 +621,8 @@ class ContextStore:
                 ),
                 updates=[
                     {
+                        "target_kind": plan.target_kind,
+                        "target_key": f"{plan.target_kind}:{plan.state_slug}",
                         "state_slug": plan.state_slug,
                         "delta_target": plan.delta_path,
                         "delta_text": plan.delta_text,
@@ -610,7 +639,7 @@ class ContextStore:
             transaction_result = transaction.commit(
                 transaction_id,
                 self.validate_workspace,
-                lambda state_text, state_slug: self.validate_state_text(
+                lambda state_text, state_slug: self.validate_current_text(
                     state_text,
                     state_slug,
                     requires_delta_token=False,
@@ -622,7 +651,8 @@ class ContextStore:
             "status": "applied",
             "event": str(event_metadata_path.relative_to(self.root)),
             "deltas": [str(plan.delta_path.relative_to(self.root)) for plan in plans],
-            "states": [str(plan.state_path.relative_to(self.root)) for plan in plans],
+            "states": [str(plan.state_path.relative_to(self.root)) for plan in plans if plan.target_kind == "state"],
+            "people": [str(plan.state_path.relative_to(self.root)) for plan in plans if plan.target_kind == "people"],
             "receipt": str(self.receipt_path(capture_id).relative_to(self.root)),
             "transaction": transaction_result["transaction_id"],
             **({"resolved_deferred": resolution_context[0]} if resolution_context is not None else {}),

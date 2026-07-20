@@ -21,7 +21,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PRODUCT_ROOT = REPO_ROOT / "product"
 PRODUCT_ROOTS = ("AGENTS.md", ".codex", ".podo")
 USER_FILES = ("WORKSPACE_VERSION", "user_config.md")
-USER_DIRS = (".podo-work", ".podo-backups", "events", "deltas", "state")
+USER_DIRS = (".podo-work", ".podo-backups", "events", "deltas", "state", "people", "research")
+USER_SUBDIRS = ("research/papers", "research/topics", "research/projects")
 MANIFEST_PATH = ".podo/install-manifest.json"
 TOKEN_RE = re.compile(r"\{\{([A-Z][A-Z0-9_]*)\}\}")
 
@@ -114,6 +115,8 @@ def build_stage(stage: Path) -> dict:
     )
     for directory in USER_DIRS:
         (stage / directory).mkdir()
+    for directory in ("research/papers", "research/topics", "research/projects"):
+        (stage / directory).mkdir(parents=True, exist_ok=True)
     shutil.copy2(
         PRODUCT_ROOT / ".podo/templates/workspace/WORKSPACE_VERSION",
         stage / "WORKSPACE_VERSION",
@@ -310,6 +313,11 @@ def apply_install(
             path = target / relative
             if not path.exists():
                 path.mkdir()
+                created.append(CreatedPath(path, "empty-dir"))
+        for relative in USER_SUBDIRS:
+            path = target / relative
+            if not path.exists():
+                path.mkdir(parents=True)
                 created.append(CreatedPath(path, "empty-dir"))
         for relative in USER_FILES:
             path = target / relative

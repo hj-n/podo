@@ -12,7 +12,9 @@
     "user_config.md",
     "events/**",
     "deltas/**",
-    "state/**"
+    "state/**",
+    "people/**",
+    "research/**"
   ],
   "create_once": [
     "WORKSPACE_VERSION",
@@ -21,6 +23,8 @@
     "user_config.md",
     "events/",
     "deltas/",
-    "state/"
+    "state/",
+    "people/",
+    "research/"
   ]
 }

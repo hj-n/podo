@@ -33,7 +33,7 @@ path.write_text(text.replace("Updated:", "Format: 2\\n\\nUpdated:", 1), encoding
 
 def add_migration(product: Path, start: int, end: int, *, affected: list[str] | None = None) -> None:
     directory = product / f".podo/migrations/{start}-to-{end}"
-    directory.mkdir()
+    directory.mkdir(exist_ok=True)
     descriptor = {
         "migration_contract_version": 1,
         "from_workspace_version": start,

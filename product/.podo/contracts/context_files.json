@@ -48,6 +48,26 @@
     "free_form_body": true,
     "modify_only_affected_content": true
   },
+  "people": {
+    "path": "people/<person-slug>.md",
+    "required_fields": [
+      "Updated",
+      "Name"
+    ],
+    "free_form_body": true,
+    "todo_canonical_location": "state/"
+  },
+  "research": {
+    "paper_path": "research/papers/<paper-slug>/",
+    "paper_files": [
+      "metadata.md",
+      "original.pdf",
+      "notes.md"
+    ],
+    "topic_path": "research/topics/<topic-slug>.md",
+    "project_path": "research/projects/<project-slug>.md",
+    "canonical_pdf_owner": "research/papers/<paper-slug>/original.pdf"
+  },
   "todo": {
     "checkbox_pattern": "- [ ] or - [x]",
     "created_required": true,

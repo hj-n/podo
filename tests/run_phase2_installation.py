@@ -17,6 +17,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = REPO_ROOT / "tools/install_local.py"
 PRODUCT_VERSION = (REPO_ROOT / "product/.podo/VERSION").read_text(encoding="utf-8").strip()
+WORKSPACE_VERSION = (REPO_ROOT / "product/.podo/templates/workspace/WORKSPACE_VERSION").read_text(encoding="utf-8").strip()
 TEST_PARENT = Path("/Users/hj/Desktop/podo-test-workspaces")
 SUITE = "realpodo-phase2-installation"
 RUN_ID = f"{os.getpid()}-{time.time_ns()}"
@@ -120,7 +121,7 @@ def test_fresh_idempotent(workspaces: list[tuple[Path, str]]) -> None:
     cli = workspace / ".podo/bin/podo"
     assert_true(os.access(cli, os.X_OK), "installed podo CLI is not executable")
     version = command(str(cli), "version", cwd=TEST_PARENT)
-    assert_true(version.returncode == 0 and f"Podo {PRODUCT_VERSION} (Workspace 1)" in version.stdout, version.stdout)
+    assert_true(version.returncode == 0 and f"Podo {PRODUCT_VERSION} (Workspace {WORKSPACE_VERSION})" in version.stdout, version.stdout)
     validation = command(str(cli), "validate", cwd=TEST_PARENT)
     assert_true(validation.returncode == 0 and "mode=context-present" in validation.stdout, validation.stdout)
     synthetic = command(str(cli), "validate", "--mode", "synthetic-fixture", cwd=TEST_PARENT)
@@ -145,7 +146,7 @@ def test_existing_preserved(workspaces: list[tuple[Path, str]]) -> None:
     config.write_text(valid_user_config(), encoding="utf-8")
     config.chmod(0o600)
     version = workspace / "WORKSPACE_VERSION"
-    version.write_text("1\n", encoding="utf-8")
+    version.write_text(f"{WORKSPACE_VERSION}\n", encoding="utf-8")
     version.chmod(0o640)
     note = workspace / "personal-note.txt"
     note.write_text("synthetic existing bytes\n", encoding="utf-8")
@@ -184,7 +185,7 @@ def test_preflight_failures(workspaces: list[tuple[Path, str]]) -> None:
     cases.append(("modified-product", "E_PRODUCT_COLLISION"))
 
     workspace = make_workspace("incompatible-workspace")
-    (workspace / "WORKSPACE_VERSION").write_text("2\n", encoding="utf-8")
+    (workspace / "WORKSPACE_VERSION").write_text("999\n", encoding="utf-8")
     workspaces.append((workspace, "incompatible-workspace"))
     before = tree_snapshot(workspace)
     result = install(workspace)

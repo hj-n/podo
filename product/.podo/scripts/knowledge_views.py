@@ -132,3 +132,36 @@ class KnowledgeViews:
             groups.append({"text": display[normalized], "locations": locations})
         groups.sort(key=lambda item: (item["text"].casefold(), item["locations"]))
         return groups
+
+    def people(self, query: str | None = None) -> list[dict[str, Any]]:
+        directory = self.root / "people"
+        values: list[dict[str, Any]] = []
+        for path in sorted(directory.glob("*.md")) if directory.is_dir() else []:
+            parsed = {
+                match.group(1): match.group(2).strip()
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if (match := FIELD_RE.match(line))
+            }
+            aliases = [value.strip() for value in parsed.get("Aliases", "").split(",") if value.strip() and value.strip() != "none"]
+            values.append(
+                {
+                    "slug": path.stem,
+                    "name": parsed.get("Name", ""),
+                    "aliases": aliases,
+                    "updated": parsed.get("Updated"),
+                    "path": path.relative_to(self.root).as_posix(),
+                }
+            )
+        if query is None:
+            return values
+        folded = query.casefold().strip()
+        matches = [
+            value
+            for value in values
+            if folded in {value["slug"].casefold(), value["name"].casefold(), *(alias.casefold() for alias in value["aliases"])}
+        ]
+        if not matches:
+            raise ViewError("E_PERSON_NOT_FOUND", query)
+        if len(matches) > 1:
+            raise ViewError("E_PERSON_AMBIGUOUS", ",".join(value["slug"] for value in matches))
+        return matches

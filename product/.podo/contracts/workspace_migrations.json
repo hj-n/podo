@@ -51,7 +51,9 @@
       "user_config.md",
       "events",
       "deltas",
-      "state"
+      "state",
+      "people",
+      "research"
     ],
     "declared_paths_only": true,
     "workspace_version_is_implicit": true

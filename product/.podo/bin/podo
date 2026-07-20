@@ -215,6 +215,19 @@ def command_duplicates(as_json: bool) -> int:
     return 0
 
 
+def command_people(query: str | None, as_json: bool) -> int:
+    values = KnowledgeViews(ROOT).people(query)
+    if as_json:
+        print(json.dumps({"people": values, "count": len(values)}, ensure_ascii=False, indent=2))
+    elif not values:
+        print("No people are recorded.")
+    else:
+        for value in values:
+            aliases = f" | aliases: {', '.join(value['aliases'])}" if value["aliases"] else ""
+            print(f"{value['name']} | {value['slug']}{aliases} | updated {value['updated']}")
+    return 0
+
+
 def command_event_storage(args: argparse.Namespace) -> int:
     store = EventStorage(ROOT)
     if args.storage_command == "plan":
@@ -366,6 +379,9 @@ def main() -> None:
     todos.add_argument("--json", action="store_true")
     duplicates = subparsers.add_parser("duplicates")
     duplicates.add_argument("--json", action="store_true")
+    people = subparsers.add_parser("people")
+    people.add_argument("query", nargs="?")
+    people.add_argument("--json", action="store_true")
     event_storage = subparsers.add_parser("event-storage")
     storage_commands = event_storage.add_subparsers(dest="storage_command", required=True)
     storage_commands.add_parser("plan")
@@ -422,6 +438,8 @@ def main() -> None:
             code = command_todos(args)
         elif args.command == "duplicates":
             code = command_duplicates(args.json)
+        elif args.command == "people":
+            code = command_people(args.query, args.json)
         elif args.command == "event-storage":
             code = command_event_storage(args)
         elif args.command == "recover":

@@ -1,6 +1,6 @@
 # Workspace Migrations
 
-이 디렉터리는 verified target product가 제공하는 사용자 데이터 migration을 보관한다. 현재 Podo 0.6.0 candidate는 Workspace 1과 호환되며 실제 migration을 포함하지 않는다.
+Podo 0.7.0은 Workspace 1을 읽을 수 있고, People과 Research를 사용하는 Workspace 2로의 별도 migration을 제공한다. 일반 product update만으로 migration을 실행하지 않는다.
 
 실제 형식 변경이 필요한 product는 다음 구조를 사용한다.
 
@@ -26,7 +26,7 @@
 ```
 
 - 시작과 목표 version은 directory 이름과 일치해야 한다.
-- 영향 path는 `user_config.md`, `events/`, `deltas/`, `state/` 아래의 exact relative path만 허용한다.
+- 영향 path는 `user_config.md`, `events/`, `deltas/`, `state/`, `people/`, `research/` 아래의 exact relative path만 허용한다.
 - `WORKSPACE_VERSION`은 engine이 마지막에 변경하므로 descriptor에 쓰지 않는다.
 - Entrypoint는 `python3 migrate.py --workspace <staged-workspace>`로 실행되고 staged Workspace 밖을 migration 대상으로 사용하지 않는다.
 - 선언하지 않은 사용자 path가 달라지면 apply 전에 중단한다.

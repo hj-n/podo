@@ -1,0 +1,15 @@
+{
+  "migration_contract_version": 1,
+  "from_workspace_version": 1,
+  "to_workspace_version": 2,
+  "description": "People과 Research를 State와 분리된 사용자 소유 영역으로 추가한다.",
+  "changes": [
+    "people/ 디렉터리를 추가한다.",
+    "research/papers/, research/topics/, research/projects/ 디렉터리를 추가한다."
+  ],
+  "affected_paths": [
+    "people",
+    "research"
+  ],
+  "entrypoint": "migrate.py"
+}

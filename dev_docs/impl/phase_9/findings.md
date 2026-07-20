@@ -29,3 +29,13 @@
 - Manifest materialization은 원본과 byte-for-byte 및 SHA-256이 동일했다.
 - Rollback은 별도 plan과 pinned current manifest를 요구하고 legacy Event를 복원했다.
 - 전환 도중 주입한 실패는 metadata와 original을 기존 bytes로 되돌렸다.
+
+## 9.4 People and Workspace 2
+
+- Podo 0.7.0 candidate는 Workspace 2를 요구하며 새 설치가 `people/`과 세 Research 하위 영역을 만든다.
+- Workspace 1→2는 `people`과 `research`만 영향 path로 선언하는 additive migration이다.
+- 실제 migration engine의 exact plan, full backup과 staged apply가 기존 State bytes를 보존하며 통과했다.
+- `target_kind: people` Context update는 Event와 Delta를 먼저 적용하고 People을 마지막에 갱신한다.
+- People alias lookup은 exact name, slug와 alias만 사용하고 ambiguity를 자동 선택하지 않는다.
+- People에 TODO checkbox를 복사하려는 update는 거부되어 TODO 정본이 State에 남는다.
+- 기존 State transaction과 recovery 회귀가 generic current-document transaction 확장 뒤에도 통과했다.

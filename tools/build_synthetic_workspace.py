@@ -58,6 +58,10 @@ def build(output: Path) -> None:
         "events",
         "deltas",
         "state",
+        "people",
+        "research/papers",
+        "research/topics",
+        "research/projects",
     ):
         (output / directory).mkdir(parents=True, exist_ok=True)
 

@@ -46,10 +46,9 @@ def synthetic_product(base: Path, version: str, workspace_versions: list[int]) -
     values = json.loads(versions_path.read_text(encoding="utf-8"))
     values["compatible"][version] = workspace_versions
     versions_path.write_text(json.dumps(values, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    if 1 not in workspace_versions:
-        (product / ".podo/templates/workspace/WORKSPACE_VERSION").write_text(
-            f"{workspace_versions[0]}\n", encoding="utf-8"
-        )
+    (product / ".podo/templates/workspace/WORKSPACE_VERSION").write_text(
+        f"{workspace_versions[0]}\n", encoding="utf-8"
+    )
     return product
 
 

@@ -271,7 +271,7 @@ class RecoveryStore:
             if capture.is_dir() and not transaction_pending:
                 findings.append(self.finding("PODO_D203_PROCESSED_CAPTURE_REMAINS", "warning", "Processed capture remains after its final receipt.", [capture.relative_to(self.root).as_posix(), relative]))
             if value.get("outcome") == "applied":
-                for field in ("event", "deltas", "states"):
+                for field in ("event", "deltas", "states", "people", "research"):
                     items = value.get(field, [])
                     if isinstance(items, str):
                         items = [items]
@@ -576,7 +576,7 @@ class RecoveryStore:
             result = self.transactions.commit(
                 str(plan["transaction_id"]),
                 store.validate_workspace,
-                lambda text, slug: store.validate_state_text(text, slug, requires_delta_token=False),
+                lambda text, slug: store.validate_current_text(text, slug, requires_delta_token=False),
             )
         except TransactionError as error:
             raise RecoveryError(error.code, error.detail) from error

@@ -12,8 +12,8 @@ Task 시작 시 `./.podo/bin/podo inbox --json`을 실행한다. 결과의 `pend
 각 pending을 자연스럽게 다음처럼 판단한다.
 
 ```text
-확인된 실제 변화이며 영향받는 State가 분명함
-→ Event → Delta → State
+확인된 실제 변화이며 영향받는 현재 영역이 분명함
+→ Event → Delta → State / People / Research
 
 단순 질문·답변, 감사, 반복 정보, 채택되지 않은 아이디어
 → No Delta
@@ -34,7 +34,7 @@ Task 시작 시 `./.podo/bin/podo inbox --json`을 실행한다. 결과의 `pend
 
 ## Apply a Clear Change
 
-사용자가 명확히 확정했고 영향받는 State가 분명하며 외부 행동이 아닌 변화는 다시 묻지 않는다. `.podo-work/requests/<capture-id>.json`을 만들고 실행한다.
+사용자가 명확히 확정했고 영향받는 State, People 또는 Research가 분명하며 외부 행동이 아닌 변화는 다시 묻지 않는다. `.podo-work/requests/<capture-id>.json`을 만들고 실행한다.
 
 ```bash
 ./.podo/bin/podo context apply \
@@ -76,7 +76,7 @@ State는 고정 category 몇 개로 제한하지 않는다. 주제에 맞는 사
 - TODO lifecycle은 `.podo/policies/todo.md`를 따른다.
 - Existing State는 먼저 읽고 현재 SHA-256을 `expected_state_sha256`에 넣는다.
 - New State는 `expected_state_sha256`을 `null`로 둔다.
-- 하나의 Event가 여러 State를 바꾸면 `updates`에 각각 넣는다.
+- 하나의 Event가 여러 현재 문서를 바꾸면 `updates`에 각각 넣는다. People은 `.podo/policies/people.md`, Research는 `.podo/policies/research.md`의 target 형식과 별도 안전 경계를 따른다.
 
 기존 결정과 충돌하더라도 사용자가 변경을 명확히 확정했다면 바로 apply한다. `changed`와 `why`에 이전 결론, 새 결론과 변경 이유를 남기고 과거 Event와 Delta는 수정하지 않는다.
 

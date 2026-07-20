@@ -104,6 +104,12 @@ class Validator:
             "deltas",
             "state",
         )
+        try:
+            workspace_version = int((self.root / "WORKSPACE_VERSION").read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            workspace_version = 1
+        if workspace_version >= 2:
+            required_dirs += ("people", "research", "research/papers", "research/topics", "research/projects")
         for relative in required_files:
             path = self.root / relative
             if not path.is_file():
@@ -344,11 +350,37 @@ class Validator:
         if self.mode == "synthetic-fixture" and not found:
             self.add("E_STATE_MISSING", "state", "at least one synthetic State is required")
 
+    def validate_people(self) -> None:
+        directory = self.root / "people"
+        if not directory.is_dir():
+            return
+        for path in sorted(directory.glob("*.md")):
+            text = path.read_text(encoding="utf-8")
+            values = self.fields(text)
+            for name in ("Name", "Updated"):
+                if not values.get(name):
+                    self.add("E_PERSON_FIELD", path, f"{name} is required")
+            if values.get("Updated"):
+                try:
+                    date.fromisoformat(values["Updated"])
+                except ValueError:
+                    self.add("E_PERSON_FIELD", path, "Updated must be YYYY-MM-DD")
+            if any(TODO_RE.match(line) for line in text.splitlines()):
+                self.add("E_PERSON_TODO", path, "People must link TODOs whose canonical location is State")
+            for link_value in LINK_RE.findall(text):
+                self.safe_target(path, link_value, "E_PERSON_LINK")
+            spans = [match.span() for match in LINK_RE.finditer(text)]
+            for match in PLAIN_REFERENCE_RE.finditer(text):
+                if any(start <= match.start() and match.end() <= end for start, end in spans):
+                    continue
+                self.add("E_PLAIN_REFERENCE", path, f"tracking path must be a Markdown link: {match.group('path')}")
+
     def validate_unresolved_tokens(self) -> None:
         paths = [self.root / "user_config.md"]
         paths.extend((self.root / "events").glob("*/*/*/metadata.md"))
         paths.extend((self.root / "deltas").glob("*/*/*.md"))
         paths.extend((self.root / "state").glob("*.md"))
+        paths.extend((self.root / "people").glob("*.md"))
         for path in paths:
             if path.is_file() and TOKEN_RE.search(path.read_text(encoding="utf-8")):
                 self.add("E_TEMPLATE_TOKEN", path, "unresolved template token remains")
@@ -365,6 +397,7 @@ class Validator:
         self.validate_events(context_contract)
         self.validate_deltas(context_contract)
         self.validate_states()
+        self.validate_people()
         self.validate_unresolved_tokens()
         return sorted(self.problems)
 

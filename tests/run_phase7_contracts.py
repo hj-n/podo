@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the Phase 7 migration contract without changing Workspace format 1."""
+"""Validate the migration approval contract and the additive Workspace 2 descriptor."""
 
 from __future__ import annotations
 
@@ -33,7 +33,14 @@ def main() -> None:
         "affected_paths",
         "entrypoint",
     }
-    assert value["user_impact"]["allowed_roots"] == ["user_config.md", "events", "deltas", "state"]
+    assert value["user_impact"]["allowed_roots"] == [
+        "user_config.md",
+        "events",
+        "deltas",
+        "state",
+        "people",
+        "research",
+    ]
     assert value["transaction"]["product_roots"] == ["AGENTS.md", ".codex", ".podo"]
     assert value["transaction"]["workspace_version_applied_last"] is True
     assert value["backup"]["automatic_deletion_allowed"] is False
@@ -41,10 +48,13 @@ def main() -> None:
     version = (PODO / "VERSION").read_text(encoding="utf-8").strip()
     assert re.fullmatch(r"\d+\.\d+\.\d+", version)
     versions = json.loads((PODO / "contracts/versions.json").read_text(encoding="utf-8"))
-    assert versions["compatible"][version] == [1]
+    assert versions["compatible"][version] == [2]
     actual_migrations = [path for path in (PODO / "migrations").iterdir() if path.is_dir()]
-    assert actual_migrations == [], "development product must not introduce a real Workspace 2 format"
-    print("PASS Phase 7 contracts keep migration approval separate and current Workspace format at 1")
+    assert [path.name for path in actual_migrations] == ["1-to-2"]
+    migration = json.loads((actual_migrations[0] / "migration.json").read_text(encoding="utf-8"))
+    assert migration["affected_paths"] == ["people", "research"]
+    assert migration["from_workspace_version"] == 1 and migration["to_workspace_version"] == 2
+    print("PASS migration approval remains separate and Workspace 2 only adds People and Research roots")
 
 
 if __name__ == "__main__":

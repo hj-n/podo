@@ -33,7 +33,7 @@ from product_manager import ProductManagerError, prepare_release
 
 MIGRATION_DIR_RE = re.compile(r"^([1-9]\d*)-to-([1-9]\d*)$")
 ENTRYPOINT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\.py$")
-ALLOWED_ROOTS = {"user_config.md", "events", "deltas", "state"}
+ALLOWED_ROOTS = {"user_config.md", "events", "deltas", "state", "people", "research"}
 REQUIRED_DESCRIPTOR = {
     "migration_contract_version",
     "from_workspace_version",
@@ -44,7 +44,7 @@ REQUIRED_DESCRIPTOR = {
     "entrypoint",
 }
 PRODUCT_ROOTS = ("AGENTS.md", ".codex", ".podo")
-USER_ROOTS = ("user_config.md", "events", "deltas", "state")
+USER_ROOTS = ("user_config.md", "events", "deltas", "state", "people", "research")
 PLAN_ID_RE = re.compile(r"^(migration|rollback)-[a-f0-9]{24}$")
 BACKUP_ID_RE = re.compile(r"^migration-[a-f0-9]{24}-before-workspace-v[1-9]\d*$")
 

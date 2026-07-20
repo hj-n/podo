@@ -19,7 +19,7 @@
 
 - Philosophy, Architecture, Roadmap와 운영 정책에 State / People / Research 경계를 반영한다.
 - Workspace 2의 ownership, path, link, original과 migration 계약을 정의한다.
-- 새 설치는 Workspace 2를 만들고 기존 Workspace 1은 명시적 migration 전까지 유지한다.
+- 새 설치는 Workspace 2를 만든다. 기존 Workspace 1은 명시적 migration 전까지 기존 제품에서 유지하며 Podo 0.7.0 적용은 Workspace 2 migration과 함께 수행한다.
 
 ### 9.1 Capture Compatibility
 

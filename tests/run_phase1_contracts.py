@@ -68,7 +68,7 @@ def mutate(root: Path, name: str) -> None:
     elif name == "unresolved-template-token":
         replace(state, "Phase 1 데이터 계약", "{{UNRESOLVED_TOKEN}} 데이터 계약")
     elif name == "incompatible-workspace-version":
-        (root / "WORKSPACE_VERSION").write_text("2\n", encoding="utf-8")
+        (root / "WORKSPACE_VERSION").write_text("999\n", encoding="utf-8")
     elif name == "missing-hook-entrypoint":
         (root / ".podo/scripts/capture_event").unlink()
     else:
