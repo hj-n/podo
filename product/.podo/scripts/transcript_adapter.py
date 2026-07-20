@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 
-SUPPORTED_RUNTIMES = {"0.144.0-alpha.4"}
+SUPPORTED_RUNTIMES = {"0.144.0-alpha.4", "0.145.0-alpha.18"}
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{1,127}$")
 
 

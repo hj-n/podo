@@ -1,0 +1,6 @@
+{"timestamp":"2026-07-15T09:00:00+09:00","type":"session_meta","payload":{"id":"synthetic-session-001","timestamp":"2026-07-15T09:00:00+09:00","cwd":"/synthetic/podo","originator":"codex_cli_rs","cli_version":"0.145.0-alpha.18"}}
+{"timestamp":"2026-07-15T09:00:01+09:00","type":"turn_context","payload":{"turn_id":"synthetic-turn-001","cwd":"/synthetic/podo","model":"synthetic-model"}}
+{"timestamp":"2026-07-15T09:00:02+09:00","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"합성 프로젝트 회의를 금요일 오전 9시로 정하고 TODO를 추가해줘."}]}}
+{"timestamp":"2026-07-15T09:00:03+09:00","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"podo version\"}","call_id":"synthetic-call-001"}}
+{"timestamp":"2026-07-15T09:00:04+09:00","type":"response_item","payload":{"type":"function_call_output","call_id":"synthetic-call-001","output":"Podo synthetic"}}
+{"timestamp":"2026-07-15T09:00:05+09:00","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"회의 시간과 TODO를 현재 Context에 반영할게요."}]}}

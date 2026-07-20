@@ -73,6 +73,39 @@ def command_hook_status() -> int:
     return 0 if installed else 1
 
 
+def capture_health() -> dict[str, str | None]:
+    health_path = ROOT / ".podo-work/capture-health.json"
+    if not health_path.is_file():
+        return {
+            "status": "not-diagnosed",
+            "code": "PODO_CAPTURE_NOT_DIAGNOSED",
+            "detail": "No successful local capture diagnosis exists yet.",
+            "checked_at": None,
+        }
+    try:
+        value = json.loads(health_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "status": "error",
+            "code": "PODO_CAPTURE_HEALTH_INVALID",
+            "detail": str(error),
+            "checked_at": None,
+        }
+    if not isinstance(value, dict) or value.get("status") not in {"ready", "error"}:
+        return {
+            "status": "error",
+            "code": "PODO_CAPTURE_HEALTH_INVALID",
+            "detail": "capture health receipt has an unsupported shape",
+            "checked_at": None,
+        }
+    return {
+        "status": str(value["status"]),
+        "code": str(value.get("code")) if value.get("code") else None,
+        "detail": str(value.get("detail")) if value.get("detail") else None,
+        "checked_at": str(value.get("checked_at")) if value.get("checked_at") else None,
+    }
+
+
 def command_inbox(as_json: bool) -> int:
     store = ContextStore(ROOT)
     values = store.list_inbox()
@@ -89,6 +122,7 @@ def command_inbox(as_json: bool) -> int:
         if recovery_required or product_recovery_required or migration_recovery_required
         else None
     )
+    current_capture_health = capture_health()
     if as_json:
         print(
             json.dumps(
@@ -99,6 +133,7 @@ def command_inbox(as_json: bool) -> int:
                     "product_recovery_required": product_recovery_required,
                     "migration_recovery_required": migration_recovery_required,
                     "recovery_diagnosis": recovery_diagnosis,
+                    "capture_health": current_capture_health,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -106,6 +141,8 @@ def command_inbox(as_json: bool) -> int:
         )
     elif not values and not deferred and not recovery_required and not product_recovery_required and not migration_recovery_required:
         print("Inbox is empty.")
+        if current_capture_health["status"] != "ready":
+            print(f"capture-warning: {current_capture_health['code']} {current_capture_health['detail']}")
     else:
         for value in values:
             print(f"{value['capture_id']} | {value['completeness']} | {value['user_preview']}")
@@ -119,6 +156,8 @@ def command_inbox(as_json: bool) -> int:
             print(f"{value} | migration-recovery-required")
         if recovery_diagnosis is not None:
             print(f"doctor | {recovery_diagnosis['status']} | {recovery_diagnosis['finding_count']} findings")
+        if current_capture_health["status"] != "ready":
+            print(f"capture-warning | {current_capture_health['code']} | {current_capture_health['detail']}")
     return 0
 
 

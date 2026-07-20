@@ -2,10 +2,12 @@
   "contract_version": 1,
   "primary_source": "hook-local-transcript",
   "observed_runtime_versions": [
-    "0.144.0-alpha.4"
+    "0.144.0-alpha.4",
+    "0.145.0-alpha.18"
   ],
   "production_supported_runtime_versions": [
-    "0.144.0-alpha.4"
+    "0.144.0-alpha.4",
+    "0.145.0-alpha.18"
   ],
   "required_input": [
     "runtime_version",

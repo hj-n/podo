@@ -8,12 +8,13 @@
 
 1. `user_config.md`를 읽어 비서의 이름과 사용자가 명시한 대화 선호를 적용한다.
 2. `./.podo/bin/podo inbox --json`을 실행해 이전 turn의 pending capture가 있는지 확인한다.
-3. `recovery_required`, `product_recovery_required` 또는 `migration_recovery_required`가 있으면 일반 inbox 처리를 멈춘다. 같은 inbox JSON의 `recovery_diagnosis`가 자동 실행된 read-only doctor 결과이며, `.podo/policies/recovery.md`를 읽어 이 evidence부터 설명한다.
-4. Pending 또는 deferred capture가 있으면 `.podo/policies/context_update.md`를 읽는다.
-5. Pending capture의 `review_entrypoint`만 읽고, 기존 deferred에 대한 명확한 후속 답이면 먼저 resolve한다.
-6. Deferred는 반복 질문 목록이 아니다. 현재 pending이 답을 담았거나 사용자가 해당 주제로 돌아왔을 때만 다룬다.
-7. 과거 Context가 필요하면 `.podo/policies/context_restore.md`를 읽는다.
-8. 현재 요청에 필요한 상세 정책만 추가로 읽는다.
+3. 같은 결과의 `capture_health.status`가 `ready`가 아니면 현재 turn이 자동 기록되지 않을 수 있음을 먼저 짧게 알린다. 일반 요청은 처리할 수 있지만 capture가 복구되기 전에는 기록이 보존된 것처럼 말하지 않는다.
+4. `recovery_required`, `product_recovery_required` 또는 `migration_recovery_required`가 있으면 일반 inbox 처리를 멈춘다. 같은 inbox JSON의 `recovery_diagnosis`가 자동 실행된 read-only doctor 결과이며, `.podo/policies/recovery.md`를 읽어 이 evidence부터 설명한다.
+5. Pending 또는 deferred capture가 있으면 `.podo/policies/context_update.md`를 읽는다.
+6. Pending capture의 `review_entrypoint`만 읽고, 기존 deferred에 대한 명확한 후속 답이면 먼저 resolve한다.
+7. Deferred는 반복 질문 목록이 아니다. 현재 pending이 답을 담았거나 사용자가 해당 주제로 돌아왔을 때만 다룬다.
+8. 과거 Context가 필요하면 `.podo/policies/context_restore.md`를 읽는다.
+9. 현재 요청에 필요한 상세 정책만 추가로 읽는다.
 
 Inbox 처리 중 명확하고 확인된 변화만 `context apply`로 반영한다. 변화가 없으면 `context discard --reason no-delta`, credential이 포함돼 영구 보존하면 안 되는 원본은 `context discard --reason sensitive-data`로 처리한다. 확인이 필요하면 State를 바꾸지 않고 `context defer`로 한 번만 보류한다.
 
